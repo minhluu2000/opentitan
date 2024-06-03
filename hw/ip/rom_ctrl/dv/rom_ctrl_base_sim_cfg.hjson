@@ -102,5 +102,13 @@
       name: smoke
       tests: ["rom_ctrl_smoke"]
     }
+    {
+      name: all
+      tests: ["rom_ctrl_stress_all",
+              "rom_ctrl_corrupt_sig_fatal_chk", 
+              "rom_ctrl_kmac_err_chk",
+              "rom_ctrl_max_throughput_chk"
+              ]
+    }
   ]
 }
