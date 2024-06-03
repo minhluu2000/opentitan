@@ -10,5 +10,5 @@
 #SBATCH --partition=cpu-research               # This job does not use a GPU
 #SBATCH --nodelist=n07-artemis                 # Node to run the job on
 
-source /mnt/shared-scratch/Hu_J/minh.luu/github/designs/opentitan_1/env_setup.bash
+source env_setup.bash
 python3 /mnt/shared-scratch/Hu_J/minh.luu/github/sim_extract/design_titan/_job/data_extractor_1.py
