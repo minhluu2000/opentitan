@@ -12,7 +12,7 @@
   tb: tb
 
   // Simulator used to sign off this block
-  tool: xcelium
+  tool: vcs
 
   // Fusesoc core file used for building the file list.
   fusesoc_core: lowrisc:dv:aes_sim:0.1
@@ -228,6 +228,10 @@
       name: stress
       tests: ["aes_stress","aes_b2b", "aes_clear", "aes_config_error", "aes_smoke",
               "aes_alert_reset"]
+    }
+    {
+      name: all
+      tests: ["aes_stress_all", "aes_stress_all_with_rand_reset"]
     }
   ]
 }
