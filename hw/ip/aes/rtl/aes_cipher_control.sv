@@ -8,78 +8,79 @@
 
 `include "prim_assert.sv"
 
-module aes_cipher_control import aes_pkg::*;
+module aes_cipher_control
+  import aes_pkg::*;
 #(
-  parameter bit         CiphOpFwdOnly = 0,
-  parameter bit         SecMasking    = 0,
-  parameter sbox_impl_e SecSBoxImpl   = SBoxImplDom
+    parameter bit         CiphOpFwdOnly = 0,
+    parameter bit         SecMasking    = 0,
+    parameter sbox_impl_e SecSBoxImpl   = SBoxImplDom
 ) (
-  input  logic                    clk_i,
-  input  logic                    rst_ni,
+    input logic clk_i,
+    input logic rst_ni,
 
-  // Input handshake signals
-  input  sp2v_e                   in_valid_i,
-  output sp2v_e                   in_ready_o,
+    // Input handshake signals
+    input  sp2v_e in_valid_i,
+    output sp2v_e in_ready_o,
 
-  // Output handshake signals
-  output sp2v_e                   out_valid_o,
-  input  sp2v_e                   out_ready_i,
+    // Output handshake signals
+    output sp2v_e out_valid_o,
+    input  sp2v_e out_ready_i,
 
-  // Control and sync signals
-  input  logic                    cfg_valid_i,
-  input  ciph_op_e                op_i,
-  input  key_len_e                key_len_i,
-  input  sp2v_e                   crypt_i,
-  output sp2v_e                   crypt_o,
-  input  sp2v_e                   dec_key_gen_i,
-  output sp2v_e                   dec_key_gen_o,
-  input  logic                    prng_reseed_i,
-  output logic                    prng_reseed_o,
-  input  logic                    key_clear_i,
-  output logic                    key_clear_o,
-  input  logic                    data_out_clear_i,
-  output logic                    data_out_clear_o,
-  input  logic                    mux_sel_err_i,
-  input  logic                    sp_enc_err_i,
-  input  logic                    op_err_i,
-  input  logic                    alert_fatal_i,
-  output logic                    alert_o,
+    // Control and sync signals
+    input  logic     cfg_valid_i,
+    input  ciph_op_e op_i,
+    input  key_len_e key_len_i,
+    input  sp2v_e    crypt_i,
+    output sp2v_e    crypt_o,
+    input  sp2v_e    dec_key_gen_i,
+    output sp2v_e    dec_key_gen_o,
+    input  logic     prng_reseed_i,
+    output logic     prng_reseed_o,
+    input  logic     key_clear_i,
+    output logic     key_clear_o,
+    input  logic     data_out_clear_i,
+    output logic     data_out_clear_o,
+    input  logic     mux_sel_err_i,
+    input  logic     sp_enc_err_i,
+    input  logic     op_err_i,
+    input  logic     alert_fatal_i,
+    output logic     alert_o,
 
-  // Control signals for masking PRNG
-  output logic                    prng_update_o,
-  output logic                    prng_reseed_req_o,
-  input  logic                    prng_reseed_ack_i,
+    // Control signals for masking PRNG
+    output logic prng_update_o,
+    output logic prng_reseed_req_o,
+    input  logic prng_reseed_ack_i,
 
-  // Control and sync signals for cipher data path
-  output state_sel_e              state_sel_o,
-  output sp2v_e                   state_we_o,
-  output sp2v_e                   sub_bytes_en_o,
-  input  sp2v_e                   sub_bytes_out_req_i,
-  output sp2v_e                   sub_bytes_out_ack_o,
-  output add_rk_sel_e             add_rk_sel_o,
+    // Control and sync signals for cipher data path
+    output state_sel_e  state_sel_o,
+    output sp2v_e       state_we_o,
+    output sp2v_e       sub_bytes_en_o,
+    input  sp2v_e       sub_bytes_out_req_i,
+    output sp2v_e       sub_bytes_out_ack_o,
+    output add_rk_sel_e add_rk_sel_o,
 
-  // Control and sync signals for key expand data path
-  output ciph_op_e                key_expand_op_o,
-  output key_full_sel_e           key_full_sel_o,
-  output sp2v_e                   key_full_we_o,
-  output key_dec_sel_e            key_dec_sel_o,
-  output sp2v_e                   key_dec_we_o,
-  output sp2v_e                   key_expand_en_o,
-  input  sp2v_e                   key_expand_out_req_i,
-  output sp2v_e                   key_expand_out_ack_o,
-  output logic                    key_expand_clear_o,
-  output logic [3:0]              key_expand_round_o,
-  output key_words_sel_e          key_words_sel_o,
-  output round_key_sel_e          round_key_sel_o
+    // Control and sync signals for key expand data path
+    output ciph_op_e             key_expand_op_o,
+    output key_full_sel_e        key_full_sel_o,
+    output sp2v_e                key_full_we_o,
+    output key_dec_sel_e         key_dec_sel_o,
+    output sp2v_e                key_dec_we_o,
+    output sp2v_e                key_expand_en_o,
+    input  sp2v_e                key_expand_out_req_i,
+    output sp2v_e                key_expand_out_ack_o,
+    output logic                 key_expand_clear_o,
+    output logic           [3:0] key_expand_round_o,
+    output key_words_sel_e       key_words_sel_o,
+    output round_key_sel_e       round_key_sel_o
 );
 
   // Signals
-  logic                          [3:0] rnd_ctr;
-  sp2v_e                               crypt_d, crypt_q;
-  sp2v_e                               dec_key_gen_d, dec_key_gen_q;
-  logic                                prng_reseed_d, prng_reseed_q;
-  logic                                key_clear_d, key_clear_q;
-  logic                                data_out_clear_d, data_out_clear_q;
+  logic [3:0] rnd_ctr;
+  sp2v_e crypt_d, crypt_q;
+  sp2v_e dec_key_gen_d, dec_key_gen_q;
+  logic prng_reseed_d, prng_reseed_q;
+  logic key_clear_d, key_clear_q;
+  logic data_out_clear_d, data_out_clear_q;
   sp2v_e                               sub_bytes_out_req;
   sp2v_e                               key_expand_out_req;
   sp2v_e                               in_valid;
@@ -136,6 +137,34 @@ module aes_cipher_control import aes_pkg::*;
   /////////
 
   // Convert sp2v_e signals to sparsified inputs.
+`ifdef BUGNUMACICON1
+  // assign sp_in_valid           = {in_valid};
+  // assign sp_out_ready          = {out_ready};
+  // assign sp_crypt              = {crypt};
+  assign sp_dec_key_gen        = {dec_key_gen};
+  assign sp_sub_bytes_out_req  = {sub_bytes_out_req};
+  assign sp_key_expand_out_req = {key_expand_out_req};
+  assign sp_crypt_q            = {crypt_q};
+  assign sp_dec_key_gen_q      = {dec_key_gen_q};
+`elsif BUGNUMACICON2
+  assign sp_in_valid      = {in_valid};
+  assign sp_out_ready     = {out_ready};
+  assign sp_crypt         = {crypt};
+  // assign sp_dec_key_gen        = {dec_key_gen};
+  // assign sp_sub_bytes_out_req  = {sub_bytes_out_req};
+  // assign sp_key_expand_out_req = {key_expand_out_req};
+  assign sp_crypt_q       = {crypt_q};
+  assign sp_dec_key_gen_q = {dec_key_gen_q};
+`elsif BUGNUMACICON1T
+  assign sp_in_valid           = {in_valid};
+  assign sp_out_ready          = {out_ready};
+  assign sp_crypt              = {crypt};
+  assign sp_dec_key_gen        = {dec_key_gen};
+  assign sp_sub_bytes_out_req  = {sub_bytes_out_req};
+  assign sp_key_expand_out_req = {key_expand_out_req};
+  // assign sp_crypt_q            = {crypt_q};
+  // assign sp_dec_key_gen_q      = {dec_key_gen_q};
+`else
   assign sp_in_valid           = {in_valid};
   assign sp_out_ready          = {out_ready};
   assign sp_crypt              = {crypt};
@@ -144,6 +173,7 @@ module aes_cipher_control import aes_pkg::*;
   assign sp_key_expand_out_req = {key_expand_out_req};
   assign sp_crypt_q            = {crypt_q};
   assign sp_dec_key_gen_q      = {dec_key_gen_q};
+`endif
 
   // SEC_CM: CIPHER.FSM.REDUN
   // SEC_CM: CIPHER.CTR.REDUN
@@ -152,134 +182,171 @@ module aes_cipher_control import aes_pkg::*;
   for (genvar i = 0; i < Sp2VWidth; i++) begin : gen_fsm
     if (SP2V_LOGIC_HIGH[i] == 1'b1) begin : gen_fsm_p
       aes_cipher_control_fsm_p #(
-        .SecMasking  ( SecMasking  ),
-        .SecSBoxImpl ( SecSBoxImpl )
+          .SecMasking (SecMasking),
+          .SecSBoxImpl(SecSBoxImpl)
       ) u_aes_cipher_control_fsm_i (
-        .clk_i                 ( clk_i                    ),
-        .rst_ni                ( rst_ni                   ),
+          .clk_i (clk_i),
+          .rst_ni(rst_ni),
 
-        .in_valid_i            ( sp_in_valid[i]           ), // Sparsified
-        .in_ready_o            ( sp_in_ready[i]           ), // Sparsified
+          .in_valid_i(sp_in_valid[i]),  // Sparsified
+          .in_ready_o(sp_in_ready[i]),  // Sparsified
 
-        .out_valid_o           ( sp_out_valid[i]          ), // Sparsified
-        .out_ready_i           ( sp_out_ready[i]          ), // Sparsified
+          .out_valid_o(sp_out_valid[i]),  // Sparsified
+          .out_ready_i(sp_out_ready[i]),  // Sparsified
 
-        .cfg_valid_i           ( cfg_valid_i              ),
-        .op_i                  ( op_i                     ),
-        .key_len_i             ( key_len_i                ),
-        .crypt_i               ( sp_crypt[i]              ), // Sparsified
-        .dec_key_gen_i         ( sp_dec_key_gen[i]        ), // Sparsified
-        .prng_reseed_i         ( prng_reseed_i            ),
-        .key_clear_i           ( key_clear_i              ),
-        .data_out_clear_i      ( data_out_clear_i         ),
-        .mux_sel_err_i         ( mux_sel_err              ),
-        .sp_enc_err_i          ( sp_enc_err               ),
-        .rnd_ctr_err_i         ( rnd_ctr_err              ),
-        .op_err_i              ( op_err_i                 ),
-        .alert_fatal_i         ( alert_fatal_i            ),
-        .alert_o               ( mr_alert[i]              ), // OR-combine
+          .cfg_valid_i     (cfg_valid_i),
+          .op_i            (op_i),
+          .key_len_i       (key_len_i),
+          .crypt_i         (sp_crypt[i]),        // Sparsified
+          .dec_key_gen_i   (sp_dec_key_gen[i]),  // Sparsified
+          .prng_reseed_i   (prng_reseed_i),
+          .key_clear_i     (key_clear_i),
+          .data_out_clear_i(data_out_clear_i),
+          .mux_sel_err_i   (mux_sel_err),
+          .sp_enc_err_i    (sp_enc_err),
+          .rnd_ctr_err_i   (rnd_ctr_err),
+          .op_err_i        (op_err_i),
+          .alert_fatal_i   (alert_fatal_i),
+          .alert_o         (mr_alert[i]),        // OR-combine
 
-        .prng_update_o         ( mr_prng_update[i]        ), // OR-combine
-        .prng_reseed_req_o     ( mr_prng_reseed_req[i]    ), // OR-combine
-        .prng_reseed_ack_i     ( prng_reseed_ack_i        ),
+          .prng_update_o    (mr_prng_update[i]),      // OR-combine
+          .prng_reseed_req_o(mr_prng_reseed_req[i]),  // OR-combine
+          .prng_reseed_ack_i(prng_reseed_ack_i),
 
-        .state_sel_o           ( mr_state_sel[i]          ), // OR-combine
-        .state_we_o            ( sp_state_we[i]           ), // Sparsified
-        .sub_bytes_en_o        ( sp_sub_bytes_en[i]       ), // Sparsified
-        .sub_bytes_out_req_i   ( sp_sub_bytes_out_req[i]  ), // Sparsified
-        .sub_bytes_out_ack_o   ( sp_sub_bytes_out_ack[i]  ), // Sparsified
-        .add_rk_sel_o          ( mr_add_rk_sel[i]         ), // OR-combine
+          .state_sel_o        (mr_state_sel[i]),          // OR-combine
+          .state_we_o         (sp_state_we[i]),           // Sparsified
+          .sub_bytes_en_o     (sp_sub_bytes_en[i]),       // Sparsified
+          .sub_bytes_out_req_i(sp_sub_bytes_out_req[i]),  // Sparsified
+          .sub_bytes_out_ack_o(sp_sub_bytes_out_ack[i]),  // Sparsified
+          .add_rk_sel_o       (mr_add_rk_sel[i]),         // OR-combine
 
-        .key_full_sel_o        ( mr_key_full_sel[i]       ), // OR-combine
-        .key_full_we_o         ( sp_key_full_we[i]        ), // Sparsified
-        .key_dec_sel_o         ( mr_key_dec_sel[i]        ), // OR-combine
-        .key_dec_we_o          ( sp_key_dec_we[i]         ), // Sparsified
-        .key_expand_en_o       ( sp_key_expand_en[i]      ), // Sparsified
-        .key_expand_out_req_i  ( sp_key_expand_out_req[i] ), // Sparsified
-        .key_expand_out_ack_o  ( sp_key_expand_out_ack[i] ), // Sparsified
-        .key_expand_clear_o    ( mr_key_expand_clear[i]   ), // OR-combine
-        .rnd_ctr_o             ( mr_rnd_ctr[i]            ), // OR-combine
-        .key_words_sel_o       ( mr_key_words_sel[i]      ), // OR-combine
-        .round_key_sel_o       ( mr_round_key_sel[i]      ), // OR-combine
+          .key_full_sel_o      (mr_key_full_sel[i]),        // OR-combine
+          .key_full_we_o       (sp_key_full_we[i]),         // Sparsified
+          .key_dec_sel_o       (mr_key_dec_sel[i]),         // OR-combine
+          .key_dec_we_o        (sp_key_dec_we[i]),          // Sparsified
+          .key_expand_en_o     (sp_key_expand_en[i]),       // Sparsified
+          .key_expand_out_req_i(sp_key_expand_out_req[i]),  // Sparsified
+          .key_expand_out_ack_o(sp_key_expand_out_ack[i]),  // Sparsified
+          .key_expand_clear_o  (mr_key_expand_clear[i]),    // OR-combine
+          .rnd_ctr_o           (mr_rnd_ctr[i]),             // OR-combine
+          .key_words_sel_o     (mr_key_words_sel[i]),       // OR-combine
+          .round_key_sel_o     (mr_round_key_sel[i]),       // OR-combine
 
-        .crypt_q_i             ( sp_crypt_q[i]            ), // Sparsified
-        .crypt_d_o             ( sp_crypt_d[i]            ), // Sparsified
-        .dec_key_gen_q_i       ( sp_dec_key_gen_q[i]      ), // Sparsified
-        .dec_key_gen_d_o       ( sp_dec_key_gen_d[i]      ), // Sparsified
-        .prng_reseed_q_i       ( prng_reseed_q            ),
-        .prng_reseed_d_o       ( mr_prng_reseed_d[i]      ), // AND-combine
-        .key_clear_q_i         ( key_clear_q              ),
-        .key_clear_d_o         ( mr_key_clear_d[i]        ), // AND-combine
-        .data_out_clear_q_i    ( data_out_clear_q         ),
-        .data_out_clear_d_o    ( mr_data_out_clear_d[i]   )  // AND-combine
+          .crypt_q_i         (sp_crypt_q[i]),          // Sparsified
+          .crypt_d_o         (sp_crypt_d[i]),          // Sparsified
+          .dec_key_gen_q_i   (sp_dec_key_gen_q[i]),    // Sparsified
+          .dec_key_gen_d_o   (sp_dec_key_gen_d[i]),    // Sparsified
+          .prng_reseed_q_i   (prng_reseed_q),
+          .prng_reseed_d_o   (mr_prng_reseed_d[i]),    // AND-combine
+          .key_clear_q_i     (key_clear_q),
+          .key_clear_d_o     (mr_key_clear_d[i]),      // AND-combine
+          .data_out_clear_q_i(data_out_clear_q),
+          .data_out_clear_d_o(mr_data_out_clear_d[i])  // AND-combine
       );
     end else begin : gen_fsm_n
       aes_cipher_control_fsm_n #(
-        .SecMasking  ( SecMasking  ),
-        .SecSBoxImpl ( SecSBoxImpl )
+          .SecMasking (SecMasking),
+          .SecSBoxImpl(SecSBoxImpl)
       ) u_aes_cipher_control_fsm_i (
-        .clk_i                 ( clk_i                    ),
-        .rst_ni                ( rst_ni                   ),
+          .clk_i (clk_i),
+          .rst_ni(rst_ni),
 
-        .in_valid_ni           ( sp_in_valid[i]           ), // Sparsified
-        .in_ready_no           ( sp_in_ready[i]           ), // Sparsified
+          .in_valid_ni(sp_in_valid[i]),  // Sparsified
+          .in_ready_no(sp_in_ready[i]),  // Sparsified
 
-        .out_valid_no          ( sp_out_valid[i]          ), // Sparsified
-        .out_ready_ni          ( sp_out_ready[i]          ), // Sparsified
+          .out_valid_no(sp_out_valid[i]),  // Sparsified
+          .out_ready_ni(sp_out_ready[i]),  // Sparsified
 
-        .cfg_valid_i           ( cfg_valid_i              ),
-        .op_i                  ( op_i                     ),
-        .key_len_i             ( key_len_i                ),
-        .crypt_ni              ( sp_crypt[i]              ), // Sparsified
-        .dec_key_gen_ni        ( sp_dec_key_gen[i]        ), // Sparsified
-        .prng_reseed_i         ( prng_reseed_i            ),
-        .key_clear_i           ( key_clear_i              ),
-        .data_out_clear_i      ( data_out_clear_i         ),
-        .mux_sel_err_i         ( mux_sel_err              ),
-        .sp_enc_err_i          ( sp_enc_err               ),
-        .rnd_ctr_err_i         ( rnd_ctr_err              ),
-        .op_err_i              ( op_err_i                 ),
-        .alert_fatal_i         ( alert_fatal_i            ),
-        .alert_o               ( mr_alert[i]              ), // OR-combine
+          .cfg_valid_i     (cfg_valid_i),
+          .op_i            (op_i),
+          .key_len_i       (key_len_i),
+          .crypt_ni        (sp_crypt[i]),        // Sparsified
+          .dec_key_gen_ni  (sp_dec_key_gen[i]),  // Sparsified
+          .prng_reseed_i   (prng_reseed_i),
+          .key_clear_i     (key_clear_i),
+          .data_out_clear_i(data_out_clear_i),
+          .mux_sel_err_i   (mux_sel_err),
+          .sp_enc_err_i    (sp_enc_err),
+          .rnd_ctr_err_i   (rnd_ctr_err),
+          .op_err_i        (op_err_i),
+          .alert_fatal_i   (alert_fatal_i),
+          .alert_o         (mr_alert[i]),        // OR-combine
 
-        .prng_update_o         ( mr_prng_update[i]        ), // OR-combine
-        .prng_reseed_req_o     ( mr_prng_reseed_req[i]    ), // OR-combine
-        .prng_reseed_ack_i     ( prng_reseed_ack_i        ),
+          .prng_update_o    (mr_prng_update[i]),      // OR-combine
+          .prng_reseed_req_o(mr_prng_reseed_req[i]),  // OR-combine
+          .prng_reseed_ack_i(prng_reseed_ack_i),
 
-        .state_sel_o           ( mr_state_sel[i]          ), // OR-combine
-        .state_we_no           ( sp_state_we[i]           ), // Sparsified
-        .sub_bytes_en_no       ( sp_sub_bytes_en[i]       ), // Sparsified
-        .sub_bytes_out_req_ni  ( sp_sub_bytes_out_req[i]  ), // Sparsified
-        .sub_bytes_out_ack_no  ( sp_sub_bytes_out_ack[i]  ), // Sparsified
-        .add_rk_sel_o          ( mr_add_rk_sel[i]         ), // OR-combine
+          .state_sel_o         (mr_state_sel[i]),          // OR-combine
+          .state_we_no         (sp_state_we[i]),           // Sparsified
+          .sub_bytes_en_no     (sp_sub_bytes_en[i]),       // Sparsified
+          .sub_bytes_out_req_ni(sp_sub_bytes_out_req[i]),  // Sparsified
+          .sub_bytes_out_ack_no(sp_sub_bytes_out_ack[i]),  // Sparsified
+          .add_rk_sel_o        (mr_add_rk_sel[i]),         // OR-combine
 
-        .key_full_sel_o        ( mr_key_full_sel[i]       ), // OR-combine
-        .key_full_we_no        ( sp_key_full_we[i]        ), // Sparsified
-        .key_dec_sel_o         ( mr_key_dec_sel[i]        ), // OR-combine
-        .key_dec_we_no         ( sp_key_dec_we[i]         ), // Sparsified
-        .key_expand_en_no      ( sp_key_expand_en[i]      ), // Sparsified
-        .key_expand_out_req_ni ( sp_key_expand_out_req[i] ), // Sparsified
-        .key_expand_out_ack_no ( sp_key_expand_out_ack[i] ), // Sparsified
-        .key_expand_clear_o    ( mr_key_expand_clear[i]   ), // OR-combine
-        .rnd_ctr_o             ( mr_rnd_ctr[i]            ), // OR-combine
-        .key_words_sel_o       ( mr_key_words_sel[i]      ), // OR-combine
-        .round_key_sel_o       ( mr_round_key_sel[i]      ), // OR-combine
+          .key_full_sel_o       (mr_key_full_sel[i]),        // OR-combine
+          .key_full_we_no       (sp_key_full_we[i]),         // Sparsified
+          .key_dec_sel_o        (mr_key_dec_sel[i]),         // OR-combine
+          .key_dec_we_no        (sp_key_dec_we[i]),          // Sparsified
+          .key_expand_en_no     (sp_key_expand_en[i]),       // Sparsified
+          .key_expand_out_req_ni(sp_key_expand_out_req[i]),  // Sparsified
+          .key_expand_out_ack_no(sp_key_expand_out_ack[i]),  // Sparsified
+          .key_expand_clear_o   (mr_key_expand_clear[i]),    // OR-combine
+          .rnd_ctr_o            (mr_rnd_ctr[i]),             // OR-combine
+          .key_words_sel_o      (mr_key_words_sel[i]),       // OR-combine
+          .round_key_sel_o      (mr_round_key_sel[i]),       // OR-combine
 
-        .crypt_q_ni            ( sp_crypt_q[i]            ), // Sparsified
-        .crypt_d_no            ( sp_crypt_d[i]            ), // Sparsified
-        .dec_key_gen_q_ni      ( sp_dec_key_gen_q[i]      ), // Sparsified
-        .dec_key_gen_d_no      ( sp_dec_key_gen_d[i]      ), // Sparsified
-        .prng_reseed_q_i       ( prng_reseed_q            ),
-        .prng_reseed_d_o       ( mr_prng_reseed_d[i]      ), // AND-combine
-        .key_clear_q_i         ( key_clear_q              ),
-        .key_clear_d_o         ( mr_key_clear_d[i]        ), // AND-combine
-        .data_out_clear_q_i    ( data_out_clear_q         ),
-        .data_out_clear_d_o    ( mr_data_out_clear_d[i]   )  // AND-combine
+          .crypt_q_ni        (sp_crypt_q[i]),          // Sparsified
+          .crypt_d_no        (sp_crypt_d[i]),          // Sparsified
+          .dec_key_gen_q_ni  (sp_dec_key_gen_q[i]),    // Sparsified
+          .dec_key_gen_d_no  (sp_dec_key_gen_d[i]),    // Sparsified
+          .prng_reseed_q_i   (prng_reseed_q),
+          .prng_reseed_d_o   (mr_prng_reseed_d[i]),    // AND-combine
+          .key_clear_q_i     (key_clear_q),
+          .key_clear_d_o     (mr_key_clear_d[i]),      // AND-combine
+          .data_out_clear_q_i(data_out_clear_q),
+          .data_out_clear_d_o(mr_data_out_clear_d[i])  // AND-combine
       );
     end
   end
 
   // Convert sparsified outputs to sp2v_e type.
+`ifdef BUGNUMACICON3
+  // assign in_ready_o           = sp2v_e'(sp_in_ready);
+  // assign out_valid_o          = sp2v_e'(sp_out_valid);
+  assign state_we_o           = sp2v_e'(sp_state_we);
+  assign sub_bytes_en_o       = sp2v_e'(sp_sub_bytes_en);
+  assign sub_bytes_out_ack_o  = sp2v_e'(sp_sub_bytes_out_ack);
+  assign key_full_we_o        = sp2v_e'(sp_key_full_we);
+  assign key_dec_we_o         = sp2v_e'(sp_key_dec_we);
+  assign key_expand_en_o      = sp2v_e'(sp_key_expand_en);
+  assign key_expand_out_ack_o = sp2v_e'(sp_key_expand_out_ack);
+  assign crypt_d              = sp2v_e'(sp_crypt_d);
+  assign dec_key_gen_d        = sp2v_e'(sp_dec_key_gen_d);
+`elsif BUGNUMACICON4
+  assign in_ready_o           = sp2v_e'(sp_in_ready);
+  assign out_valid_o          = sp2v_e'(sp_out_valid);
+  // assign state_we_o           = sp2v_e'(sp_state_we);
+  // assign sub_bytes_en_o       = sp2v_e'(sp_sub_bytes_en);
+  assign sub_bytes_out_ack_o  = sp2v_e'(sp_sub_bytes_out_ack);
+  assign key_full_we_o        = sp2v_e'(sp_key_full_we);
+  assign key_dec_we_o         = sp2v_e'(sp_key_dec_we);
+  assign key_expand_en_o      = sp2v_e'(sp_key_expand_en);
+  assign key_expand_out_ack_o = sp2v_e'(sp_key_expand_out_ack);
+  assign crypt_d              = sp2v_e'(sp_crypt_d);
+  assign dec_key_gen_d        = sp2v_e'(sp_dec_key_gen_d);
+`elsif BUGNUMACICON5
+  assign in_ready_o           = sp2v_e'(sp_in_ready);
+  assign out_valid_o          = sp2v_e'(sp_out_valid);
+  assign state_we_o           = sp2v_e'(sp_state_we);
+  assign sub_bytes_en_o       = sp2v_e'(sp_sub_bytes_en);
+  assign sub_bytes_out_ack_o  = sp2v_e'(sp_sub_bytes_out_ack);
+  // assign key_full_we_o        = sp2v_e'(sp_key_full_we);
+  // assign key_dec_we_o         = sp2v_e'(sp_key_dec_we);
+  assign key_expand_en_o      = sp2v_e'(sp_key_expand_en);
+  assign key_expand_out_ack_o = sp2v_e'(sp_key_expand_out_ack);
+  assign crypt_d              = sp2v_e'(sp_crypt_d);
+  assign dec_key_gen_d        = sp2v_e'(sp_dec_key_gen_d);
+`else
   assign in_ready_o           = sp2v_e'(sp_in_ready);
   assign out_valid_o          = sp2v_e'(sp_out_valid);
   assign state_we_o           = sp2v_e'(sp_state_we);
@@ -291,24 +358,76 @@ module aes_cipher_control import aes_pkg::*;
   assign key_expand_out_ack_o = sp2v_e'(sp_key_expand_out_ack);
   assign crypt_d              = sp2v_e'(sp_crypt_d);
   assign dec_key_gen_d        = sp2v_e'(sp_dec_key_gen_d);
+`endif
 
   // Combine single-bit FSM outputs.
   // OR: One bit is sufficient to drive the corresponding output bit high.
+`ifdef BUGNUMACICON2T
+  assign alert_o            = !(|mr_alert);
+  assign prng_update_o      = !(|mr_prng_update);
+  assign prng_reseed_req_o  = |mr_prng_reseed_req;
+  assign key_expand_clear_o = |mr_key_expand_clear;
+`elsif BUGNUMACICON3T
+  assign alert_o       = |mr_alert;
+  assign prng_update_o = |mr_prng_update;
+  // assign prng_reseed_req_o  = |mr_prng_reseed_req;
+  // assign key_expand_clear_o = |mr_key_expand_clear;
+`else
   assign alert_o            = |mr_alert;
   assign prng_update_o      = |mr_prng_update;
   assign prng_reseed_req_o  = |mr_prng_reseed_req;
   assign key_expand_clear_o = |mr_key_expand_clear;
+`endif
   // AND: Only if all bits are high, the corresponding status is signaled which will lead to
   // the clearing of these trigger bits.
-  assign prng_reseed_d      = &mr_prng_reseed_d;
-  assign key_clear_d        = &mr_key_clear_d;
-  assign data_out_clear_d   = &mr_data_out_clear_d;
+`ifdef BUGNUMACICON6
+  // assign prng_reseed_d    = &mr_prng_reseed_d;
+  assign key_clear_d      = &mr_key_clear_d;
+  assign data_out_clear_d = &mr_data_out_clear_d;
+`elsif BUGNUMACICON7
+  assign prng_reseed_d    = &mr_prng_reseed_d;
+  // assign key_clear_d      = &mr_key_clear_d;
+  assign data_out_clear_d = &mr_data_out_clear_d;
+`elsif BUGNUMACICON4T
+  // assign prng_reseed_d    = |mr_prng_reseed_d;
+  // assign key_clear_d      = |mr_key_clear_d;
+  // assign data_out_clear_d = |mr_data_out_clear_d;
+`else
+  assign prng_reseed_d    = &mr_prng_reseed_d;
+  assign key_clear_d      = &mr_key_clear_d;
+  assign data_out_clear_d = &mr_data_out_clear_d;
+`endif
 
   // Combine multi-bit, sparse FSM outputs. We simply OR them together. If the FSMs don't provide
   // the same outputs, two cases are possible:
   // - An invalid encoding results: A downstream checker will fire, see mux_sel_err_i.
   // - A valid encoding results: The outputs are compared below to cover this case, see mr_err;
   always_comb begin : combine_sparse_signals
+`ifdef BUGNUMACICON8
+    // state_sel_o     = state_sel_e'({StateSelWidth{1'b0}});
+    // add_rk_sel_o    = add_rk_sel_e'({AddRKSelWidth{1'b0}});
+    key_full_sel_o  = key_full_sel_e'({KeyFullSelWidth{1'b0}});
+    key_dec_sel_o   = key_dec_sel_e'({KeyDecSelWidth{1'b0}});
+    key_words_sel_o = key_words_sel_e'({KeyWordsSelWidth{1'b0}});
+    round_key_sel_o = round_key_sel_e'({RoundKeySelWidth{1'b0}});
+    mr_err          = 1'b0;
+`elsif BUGNUMACICON9
+    state_sel_o     = state_sel_e'({StateSelWidth{1'b0}});
+    add_rk_sel_o    = add_rk_sel_e'({AddRKSelWidth{1'b0}});
+    // key_full_sel_o  = key_full_sel_e'({KeyFullSelWidth{1'b0}});
+    // key_dec_sel_o   = key_dec_sel_e'({KeyDecSelWidth{1'b0}});
+    key_words_sel_o = key_words_sel_e'({KeyWordsSelWidth{1'b0}});
+    round_key_sel_o = round_key_sel_e'({RoundKeySelWidth{1'b0}});
+    mr_err          = 1'b0;
+`elsif BUGNUMACICON10
+    state_sel_o    = state_sel_e'({StateSelWidth{1'b0}});
+    add_rk_sel_o   = add_rk_sel_e'({AddRKSelWidth{1'b0}});
+    key_full_sel_o = key_full_sel_e'({KeyFullSelWidth{1'b0}});
+    key_dec_sel_o  = key_dec_sel_e'({KeyDecSelWidth{1'b0}});
+    // key_words_sel_o = key_words_sel_e'({KeyWordsSelWidth{1'b0}});
+    // round_key_sel_o = round_key_sel_e'({RoundKeySelWidth{1'b0}});
+    mr_err         = 1'b0;
+`else
     state_sel_o     = state_sel_e'({StateSelWidth{1'b0}});
     add_rk_sel_o    = add_rk_sel_e'({AddRKSelWidth{1'b0}});
     key_full_sel_o  = key_full_sel_e'({KeyFullSelWidth{1'b0}});
@@ -316,15 +435,45 @@ module aes_cipher_control import aes_pkg::*;
     key_words_sel_o = key_words_sel_e'({KeyWordsSelWidth{1'b0}});
     round_key_sel_o = round_key_sel_e'({RoundKeySelWidth{1'b0}});
     mr_err          = 1'b0;
+`endif
 
+`ifdef BUGNUMACICON11
     for (int i = 0; i < Sp2VWidth; i++) begin
-      state_sel_o     = state_sel_e'({state_sel_o}         | {mr_state_sel[i]});
-      add_rk_sel_o    = add_rk_sel_e'({add_rk_sel_o}       | {mr_add_rk_sel[i]});
-      key_full_sel_o  = key_full_sel_e'({key_full_sel_o}   | {mr_key_full_sel[i]});
-      key_dec_sel_o   = key_dec_sel_e'({key_dec_sel_o}     | {mr_key_dec_sel[i]});
+      // state_sel_o     = state_sel_e'({state_sel_o} | {mr_state_sel[i]});
+      // add_rk_sel_o    = add_rk_sel_e'({add_rk_sel_o} | {mr_add_rk_sel[i]});
+      key_full_sel_o  = key_full_sel_e'({key_full_sel_o} | {mr_key_full_sel[i]});
+      key_dec_sel_o   = key_dec_sel_e'({key_dec_sel_o} | {mr_key_dec_sel[i]});
       key_words_sel_o = key_words_sel_e'({key_words_sel_o} | {mr_key_words_sel[i]});
       round_key_sel_o = round_key_sel_e'({round_key_sel_o} | {mr_round_key_sel[i]});
     end
+`elsif BUGNUMACICON12
+    for (int i = 0; i < Sp2VWidth; i++) begin
+      state_sel_o     = state_sel_e'({state_sel_o} & {mr_state_sel[i]});
+      add_rk_sel_o    = add_rk_sel_e'({add_rk_sel_o} & {mr_add_rk_sel[i]});
+      key_full_sel_o  = key_full_sel_e'({key_full_sel_o} & {mr_key_full_sel[i]});
+      key_dec_sel_o   = key_dec_sel_e'({key_dec_sel_o} & {mr_key_dec_sel[i]});
+      key_words_sel_o = key_words_sel_e'({key_words_sel_o} & {mr_key_words_sel[i]});
+      round_key_sel_o = round_key_sel_e'({round_key_sel_o} & {mr_round_key_sel[i]});
+    end
+`elsif BUGNUMACICON5T
+    for (int i = 4; i < Sp2VWidth; i++) begin
+      state_sel_o     = state_sel_e'({state_sel_o} | {mr_state_sel[i]});
+      add_rk_sel_o    = add_rk_sel_e'({add_rk_sel_o} | {mr_add_rk_sel[i]});
+      key_full_sel_o  = key_full_sel_e'({key_full_sel_o} | {mr_key_full_sel[i]});
+      key_dec_sel_o   = key_dec_sel_e'({key_dec_sel_o} | {mr_key_dec_sel[i]});
+      key_words_sel_o = key_words_sel_e'({key_words_sel_o} | {mr_key_words_sel[i]});
+      round_key_sel_o = round_key_sel_e'({round_key_sel_o} | {mr_round_key_sel[i]});
+    end
+`else
+    for (int i = 0; i < Sp2VWidth; i++) begin
+      state_sel_o     = state_sel_e'({state_sel_o} | {mr_state_sel[i]});
+      add_rk_sel_o    = add_rk_sel_e'({add_rk_sel_o} | {mr_add_rk_sel[i]});
+      key_full_sel_o  = key_full_sel_e'({key_full_sel_o} | {mr_key_full_sel[i]});
+      key_dec_sel_o   = key_dec_sel_e'({key_dec_sel_o} | {mr_key_dec_sel[i]});
+      key_words_sel_o = key_words_sel_e'({key_words_sel_o} | {mr_key_words_sel[i]});
+      round_key_sel_o = round_key_sel_e'({round_key_sel_o} | {mr_round_key_sel[i]});
+    end
+`endif
 
     for (int i = 0; i < Sp2VWidth; i++) begin
       if (state_sel_o     != mr_state_sel[i]     ||
@@ -339,10 +488,57 @@ module aes_cipher_control import aes_pkg::*;
   end
 
   // Collect errors in mux selector signals.
+`ifdef BUGNUMACICON13
+  assign mux_sel_err = ~mux_sel_err_i;
+`else
   assign mux_sel_err = mux_sel_err_i | mr_err;
+`endif
 
   // Combine counter signals. We simply OR them together. If the FSMs don't provide the same
   // outputs, rnd_ctr_err will be set.
+`ifdef BUGNUMACICON6T
+  always_comb begin : combine_counter_signals
+    rnd_ctr     = '0;
+    rnd_ctr_err = 1'b1;
+    for (int i = 0; i < Sp2VWidth; i++) begin
+      rnd_ctr |= mr_rnd_ctr[i];
+    end
+
+    for (int i = 0; i < Sp2VWidth; i++) begin
+      if (rnd_ctr != mr_rnd_ctr[i]) begin
+        rnd_ctr_err = 1'b1;
+      end
+    end
+  end
+`elsif BUGNUMACICON7T
+  always_comb begin : combine_counter_signals
+    rnd_ctr     = '0;
+    rnd_ctr_err = 1'b0;
+    for (int i = 4; i < Sp2VWidth; i++) begin
+      rnd_ctr |= mr_rnd_ctr[i];
+    end
+
+    for (int i = 4; i < Sp2VWidth; i++) begin
+      if (rnd_ctr != mr_rnd_ctr[i]) begin
+        rnd_ctr_err = 1'b0;
+      end
+    end
+  end
+`elsif BUGNUMACICON14
+  always_comb begin : combine_counter_signals
+    rnd_ctr     = '0;
+    rnd_ctr_err = 1'b0;
+    for (int i = 0; i < Sp2VWidth; i++) begin
+      rnd_ctr |= mr_rnd_ctr[i];
+    end
+
+    for (int i = 0; i < Sp2VWidth; i++) begin
+      if (rnd_ctr == mr_rnd_ctr[i]) begin
+        rnd_ctr_err = 1'b1;
+      end
+    end
+  end
+`else
   always_comb begin : combine_counter_signals
     rnd_ctr     = '0;
     rnd_ctr_err = 1'b0;
@@ -356,16 +552,17 @@ module aes_cipher_control import aes_pkg::*;
       end
     end
   end
+`endif
 
   always_ff @(posedge clk_i or negedge rst_ni) begin : reg_fsm
     if (!rst_ni) begin
-      prng_reseed_q      <= 1'b0;
-      key_clear_q        <= 1'b0;
-      data_out_clear_q   <= 1'b0;
+      prng_reseed_q    <= 1'b0;
+      key_clear_q      <= 1'b0;
+      data_out_clear_q <= 1'b0;
     end else begin
-      prng_reseed_q      <= prng_reseed_d;
-      key_clear_q        <= key_clear_d;
-      data_out_clear_q   <= data_out_clear_d;
+      prng_reseed_q    <= prng_reseed_d;
+      key_clear_q      <= key_clear_d;
+      data_out_clear_q <= data_out_clear_d;
     end
   end
 
@@ -375,10 +572,10 @@ module aes_cipher_control import aes_pkg::*;
   assign key_expand_round_o = rnd_ctr;
 
   // Let the main controller know whate we are doing.
-  assign crypt_o          = crypt_q;
-  assign dec_key_gen_o    = dec_key_gen_q;
-  assign prng_reseed_o    = prng_reseed_q;
-  assign key_clear_o      = key_clear_q;
+  assign crypt_o = crypt_q;
+  assign dec_key_gen_o = dec_key_gen_q;
+  assign prng_reseed_o = prng_reseed_q;
+  assign key_clear_o = key_clear_q;
   assign data_out_clear_o = data_out_clear_q;
 
 
@@ -402,24 +599,24 @@ module aes_cipher_control import aes_pkg::*;
   // flops in order to prevent optimizations on these status signals.
   logic [Sp2VWidth-1:0] crypt_q_raw;
   prim_flop #(
-    .Width      ( Sp2VWidth            ),
-    .ResetValue ( Sp2VWidth'(SP2V_LOW) )
+      .Width     (Sp2VWidth),
+      .ResetValue(Sp2VWidth'(SP2V_LOW))
   ) u_crypt_regs (
-    .clk_i  ( clk_i       ),
-    .rst_ni ( rst_ni      ),
-    .d_i    ( crypt_d     ),
-    .q_o    ( crypt_q_raw )
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
+      .d_i   (crypt_d),
+      .q_o   (crypt_q_raw)
   );
 
   logic [Sp2VWidth-1:0] dec_key_gen_q_raw;
   prim_flop #(
-    .Width      ( Sp2VWidth            ),
-    .ResetValue ( Sp2VWidth'(SP2V_LOW) )
+      .Width     (Sp2VWidth),
+      .ResetValue(Sp2VWidth'(SP2V_LOW))
   ) u_dec_key_gen_regs (
-    .clk_i  ( clk_i             ),
-    .rst_ni ( rst_ni            ),
-    .d_i    ( dec_key_gen_d     ),
-    .q_o    ( dec_key_gen_q_raw )
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
+      .d_i   (dec_key_gen_d),
+      .q_o   (dec_key_gen_q_raw)
   );
 
   // We use vectors of sparsely encoded signals to reduce code duplication.
@@ -445,19 +642,38 @@ module aes_cipher_control import aes_pkg::*;
   // Individually check sparsely encoded signals.
   for (genvar i = 0; i < NumSp2VSig; i++) begin : gen_sel_buf_chk
     aes_sel_buf_chk #(
-      .Num      ( Sp2VNum         ),
-      .Width    ( Sp2VWidth       ),
-      .EnSecBuf ( Sp2VEnSecBuf[i] )
+        .Num     (Sp2VNum),
+        .Width   (Sp2VWidth),
+        .EnSecBuf(Sp2VEnSecBuf[i])
     ) u_aes_sp2v_sig_buf_chk_i (
-      .clk_i  ( clk_i               ),
-      .rst_ni ( rst_ni              ),
-      .sel_i  ( sp2v_sig[i]         ),
-      .sel_o  ( sp2v_sig_chk_raw[i] ),
-      .err_o  ( sp2v_sig_err[i]     )
+        .clk_i (clk_i),
+        .rst_ni(rst_ni),
+        .sel_i (sp2v_sig[i]),
+        .sel_o (sp2v_sig_chk_raw[i]),
+        .err_o (sp2v_sig_err[i])
     );
     assign sp2v_sig_chk[i] = sp2v_e'(sp2v_sig_chk_raw[i]);
   end
 
+`ifdef BUGNUMACICON15
+  // assign in_valid           = sp2v_sig_chk[0];
+  // assign out_ready          = sp2v_sig_chk[1];
+  assign crypt              = sp2v_sig_chk[2];
+  assign dec_key_gen        = sp2v_sig_chk[3];
+  assign crypt_q            = sp2v_sig_chk[4];
+  assign dec_key_gen_q      = sp2v_sig_chk[5];
+  assign sub_bytes_out_req  = sp2v_sig_chk[6];
+  assign key_expand_out_req = sp2v_sig_chk[7];
+`elsif BUGNUMACICON8T
+  assign in_valid           = sp2v_sig_chk[0];
+  assign out_ready          = ~sp2v_sig_chk[1];
+  assign crypt              = ~sp2v_sig_chk[2];
+  assign dec_key_gen        = sp2v_sig_chk[3];
+  assign crypt_q            = sp2v_sig_chk[4];
+  assign dec_key_gen_q      = sp2v_sig_chk[5];
+  assign sub_bytes_out_req  = sp2v_sig_chk[6];
+  assign key_expand_out_req = sp2v_sig_chk[7];
+`else
   assign in_valid           = sp2v_sig_chk[0];
   assign out_ready          = sp2v_sig_chk[1];
   assign crypt              = sp2v_sig_chk[2];
@@ -466,6 +682,7 @@ module aes_cipher_control import aes_pkg::*;
   assign dec_key_gen_q      = sp2v_sig_chk[5];
   assign sub_bytes_out_req  = sp2v_sig_chk[6];
   assign key_expand_out_req = sp2v_sig_chk[7];
+`endif
 
   // Collect encoding errors.
   // We instantiate the checker modules as close as possible to where the sparsely encoded signals
@@ -477,9 +694,6 @@ module aes_cipher_control import aes_pkg::*;
   ////////////////
 
   // Selectors must be known/valid
-  `ASSERT(AesCiphOpValid, cfg_valid_i |-> op_i inside {
-      CIPH_FWD,
-      CIPH_INV
-      })
+  `ASSERT(AesCiphOpValid, cfg_valid_i |-> op_i inside {CIPH_FWD, CIPH_INV})
 
 endmodule

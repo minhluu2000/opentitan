@@ -6,36 +6,37 @@
 
 `include "prim_assert.sv"
 
-module aes_ctr_fsm import aes_pkg::*;
+module aes_ctr_fsm
+  import aes_pkg::*;
 (
-  input  logic                     clk_i,
-  input  logic                     rst_ni,
+    input logic clk_i,
+    input logic rst_ni,
 
-  input  logic                     incr_i,     // Sparsify using multi-rail.
-  output logic                     ready_o,    // Sparsify using multi-rail.
-  input  logic                     incr_err_i,
-  input  logic                     mr_err_i,
-  output logic                     alert_o,
+    input  logic incr_i,      // Sparsify using multi-rail.
+    output logic ready_o,     // Sparsify using multi-rail.
+    input  logic incr_err_i,
+    input  logic mr_err_i,
+    output logic alert_o,
 
-  output logic [SliceIdxWidth-1:0] ctr_slice_idx_o,
-  input  logic  [SliceSizeCtr-1:0] ctr_slice_i,
-  output logic  [SliceSizeCtr-1:0] ctr_slice_o,
-  output logic                     ctr_we_o    // Sparsify using multi-rail.
+    output logic [SliceIdxWidth-1:0] ctr_slice_idx_o,
+    input  logic [ SliceSizeCtr-1:0] ctr_slice_i,
+    output logic [ SliceSizeCtr-1:0] ctr_slice_o,
+    output logic                     ctr_we_o          // Sparsify using multi-rail.
 );
 
   // Signals
-  aes_ctr_e                 aes_ctr_ns, aes_ctr_cs;
+  aes_ctr_e aes_ctr_ns, aes_ctr_cs;
   logic [SliceIdxWidth-1:0] ctr_slice_idx_d, ctr_slice_idx_q;
-  logic                     ctr_carry_d, ctr_carry_q;
+  logic ctr_carry_d, ctr_carry_q;
 
-  logic    [SliceSizeCtr:0] ctr_value;
+  logic [SliceSizeCtr:0] ctr_value;
 
   /////////////
   // Counter //
   /////////////
 
   // We do SliceSizeCtr bits at a time.
-  assign ctr_value   = ctr_slice_i + {{(SliceSizeCtr-1){1'b0}}, ctr_carry_q};
+  assign ctr_value   = ctr_slice_i + {{(SliceSizeCtr - 1) {1'b0}}, ctr_carry_q};
   assign ctr_slice_o = ctr_value[SliceSizeCtr-1:0];
 
   /////////////
@@ -46,18 +47,33 @@ module aes_ctr_fsm import aes_pkg::*;
   always_comb begin : aes_ctr_fsm_comb
 
     // Outputs
-    ready_o         = 1'b0;
-    ctr_we_o        = 1'b0;
-    alert_o         = 1'b0;
+    ready_o  = 1'b0;
+    ctr_we_o = 1'b0;
+    alert_o  = 1'b0;
 
     // FSM
+`ifdef BUGNUMCTRFSM1
+    // aes_ctr_ns      = aes_ctr_cs;
+    ctr_slice_idx_d = ctr_slice_idx_q;
+    ctr_carry_d     = ctr_carry_q;
+`elsif BUGNUMCTRFSM2
+    aes_ctr_ns  = aes_ctr_cs;
+    // ctr_slice_idx_d = ctr_slice_idx_q;
+    ctr_carry_d = ctr_carry_q;
+`elsif BUGNUMCTRFSM1T
+    aes_ctr_ns      = ctr_carry_q;
+    ctr_slice_idx_d = aes_ctr_cs;
+    ctr_carry_d     = ctr_slice_idx_q;
+`else
     aes_ctr_ns      = aes_ctr_cs;
     ctr_slice_idx_d = ctr_slice_idx_q;
     ctr_carry_d     = ctr_carry_q;
+`endif
 
+    
     unique case (aes_ctr_cs)
       CTR_IDLE: begin
-        ready_o = 1'b1;
+        ready_o = 1'b0;
         if (incr_i == 1'b1) begin
           // Initialize slice index and carry bit.
           ctr_slice_idx_d = '0;
@@ -117,9 +133,6 @@ module aes_ctr_fsm import aes_pkg::*;
   ////////////////
   // Assertions //
   ////////////////
-  `ASSERT(AesCtrStateValid, !alert_o |-> aes_ctr_cs inside {
-      CTR_IDLE,
-      CTR_INCR
-      })
+  `ASSERT(AesCtrStateValid, !alert_o |-> aes_ctr_cs inside {CTR_IDLE, CTR_INCR})
 
 endmodule
