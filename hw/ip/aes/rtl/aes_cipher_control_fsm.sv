@@ -8,75 +8,76 @@
 
 `include "prim_assert.sv"
 
-module aes_cipher_control_fsm import aes_pkg::*;
+module aes_cipher_control_fsm
+  import aes_pkg::*;
 #(
-  parameter bit         SecMasking  = 0,
-  parameter sbox_impl_e SecSBoxImpl = SBoxImplDom
+    parameter bit         SecMasking  = 0,
+    parameter sbox_impl_e SecSBoxImpl = SBoxImplDom
 ) (
-  input  logic             clk_i,
-  input  logic             rst_ni,
+    input logic clk_i,
+    input logic rst_ni,
 
-  // Input handshake signals
-  input  logic             in_valid_i,           // Sparsify using multi-rail.
-  output logic             in_ready_o,           // Sparsify using multi-rail.
+    // Input handshake signals
+    input  logic in_valid_i,  // Sparsify using multi-rail.
+    output logic in_ready_o,  // Sparsify using multi-rail.
 
-  // Output handshake signals
-  output logic             out_valid_o,          // Sparsify using multi-rail.
-  input  logic             out_ready_i,          // Sparsify using multi-rail.
+    // Output handshake signals
+    output logic out_valid_o,  // Sparsify using multi-rail.
+    input  logic out_ready_i,  // Sparsify using multi-rail.
 
-  // Control and sync signals
-  input  logic             cfg_valid_i,          // Used for SVAs only.
-  input  ciph_op_e         op_i,
-  input  key_len_e         key_len_i,
-  input  logic             crypt_i,              // Sparsify using multi-rail.
-  input  logic             dec_key_gen_i,        // Sparsify using multi-rail.
-  input  logic             prng_reseed_i,
-  input  logic             key_clear_i,
-  input  logic             data_out_clear_i,
-  input  logic             mux_sel_err_i,
-  input  logic             sp_enc_err_i,
-  input  logic             rnd_ctr_err_i,
-  input  logic             op_err_i,
-  input  logic             alert_fatal_i,
-  output logic             alert_o,
+    // Control and sync signals
+    input  logic     cfg_valid_i,       // Used for SVAs only.
+    input  ciph_op_e op_i,
+    input  key_len_e key_len_i,
+    input  logic     crypt_i,           // Sparsify using multi-rail.
+    input  logic     dec_key_gen_i,     // Sparsify using multi-rail.
+    input  logic     prng_reseed_i,
+    input  logic     key_clear_i,
+    input  logic     data_out_clear_i,
+    input  logic     mux_sel_err_i,
+    input  logic     sp_enc_err_i,
+    input  logic     rnd_ctr_err_i,
+    input  logic     op_err_i,
+    input  logic     alert_fatal_i,
+    output logic     alert_o,
 
-  // Control signals for masking PRNG
-  output logic             prng_update_o,
-  output logic             prng_reseed_req_o,
-  input  logic             prng_reseed_ack_i,
+    // Control signals for masking PRNG
+    output logic prng_update_o,
+    output logic prng_reseed_req_o,
+    input  logic prng_reseed_ack_i,
 
-  // Control and sync signals for cipher data path
-  output state_sel_e       state_sel_o,
-  output logic             state_we_o,           // Sparsify using multi-rail.
-  output logic             sub_bytes_en_o,       // Sparsify using multi-rail.
-  input  logic             sub_bytes_out_req_i,  // Sparsify using multi-rail.
-  output logic             sub_bytes_out_ack_o,  // Sparsify using multi-rail.
-  output add_rk_sel_e      add_rk_sel_o,
+    // Control and sync signals for cipher data path
+    output state_sel_e  state_sel_o,
+    output logic        state_we_o,           // Sparsify using multi-rail.
+    output logic        sub_bytes_en_o,       // Sparsify using multi-rail.
+    input  logic        sub_bytes_out_req_i,  // Sparsify using multi-rail.
+    output logic        sub_bytes_out_ack_o,  // Sparsify using multi-rail.
+    output add_rk_sel_e add_rk_sel_o,
 
-  // Control and sync signals for key expand data path
-  output key_full_sel_e    key_full_sel_o,
-  output logic             key_full_we_o,        // Sparsify using multi-rail.
-  output key_dec_sel_e     key_dec_sel_o,
-  output logic             key_dec_we_o,         // Sparsify using multi-rail.
-  output logic             key_expand_en_o,      // Sparsify using multi-rail.
-  input  logic             key_expand_out_req_i, // Sparsify using multi-rail.
-  output logic             key_expand_out_ack_o, // Sparsify using multi-rail.
-  output logic             key_expand_clear_o,
-  output logic [3:0]       rnd_ctr_o,
-  output key_words_sel_e   key_words_sel_o,
-  output round_key_sel_e   round_key_sel_o,
+    // Control and sync signals for key expand data path
+    output key_full_sel_e        key_full_sel_o,
+    output logic                 key_full_we_o,         // Sparsify using multi-rail.
+    output key_dec_sel_e         key_dec_sel_o,
+    output logic                 key_dec_we_o,          // Sparsify using multi-rail.
+    output logic                 key_expand_en_o,       // Sparsify using multi-rail.
+    input  logic                 key_expand_out_req_i,  // Sparsify using multi-rail.
+    output logic                 key_expand_out_ack_o,  // Sparsify using multi-rail.
+    output logic                 key_expand_clear_o,
+    output logic           [3:0] rnd_ctr_o,
+    output key_words_sel_e       key_words_sel_o,
+    output round_key_sel_e       round_key_sel_o,
 
-  // Register signals
-  input  logic             crypt_q_i,            // Sparsify using multi-rail.
-  output logic             crypt_d_o,            // Sparsify using multi-rail.
-  input  logic             dec_key_gen_q_i,      // Sparsify using multi-rail.
-  output logic             dec_key_gen_d_o,      // Sparsify using multi-rail.
-  input  logic             prng_reseed_q_i,
-  output logic             prng_reseed_d_o,
-  input  logic             key_clear_q_i,
-  output logic             key_clear_d_o,
-  input  logic             data_out_clear_q_i,
-  output logic             data_out_clear_d_o
+    // Register signals
+    input  logic crypt_q_i,           // Sparsify using multi-rail.
+    output logic crypt_d_o,           // Sparsify using multi-rail.
+    input  logic dec_key_gen_q_i,     // Sparsify using multi-rail.
+    output logic dec_key_gen_d_o,     // Sparsify using multi-rail.
+    input  logic prng_reseed_q_i,
+    output logic prng_reseed_d_o,
+    input  logic key_clear_q_i,
+    output logic key_clear_d_o,
+    input  logic data_out_clear_q_i,
+    output logic data_out_clear_d_o
 );
 
   // cfg_valid_i is used for SVAs only.
@@ -91,13 +92,13 @@ module aes_cipher_control_fsm import aes_pkg::*;
 
   // Signals
   aes_cipher_ctrl_e aes_cipher_ctrl_ns, aes_cipher_ctrl_cs;
-  logic             advance;
-  logic       [2:0] cyc_ctr_d, cyc_ctr_q;
-  logic             cyc_ctr_expr;
-  logic             prng_reseed_done_d, prng_reseed_done_q;
-  logic       [3:0] rnd_ctr_d, rnd_ctr_q;
-  logic       [3:0] num_rounds_d, num_rounds_q;
-  logic       [3:0] num_rounds_regular;
+  logic advance;
+  logic [2:0] cyc_ctr_d, cyc_ctr_q;
+  logic cyc_ctr_expr;
+  logic prng_reseed_done_d, prng_reseed_done_q;
+  logic [3:0] rnd_ctr_d, rnd_ctr_q;
+  logic [3:0] num_rounds_d, num_rounds_q;
+  logic [3:0] num_rounds_regular;
 
   // Use separate signal for number of regular rounds.
   assign num_rounds_regular = num_rounds_q - 4'd1;
@@ -106,21 +107,52 @@ module aes_cipher_control_fsm import aes_pkg::*;
   always_comb begin : aes_cipher_ctrl_fsm
 
     // Handshake signals
-    in_ready_o           = 1'b0;
-    out_valid_o          = 1'b0;
+    in_ready_o          = 1'b0;
+    out_valid_o         = 1'b0;
 
     // Masking PRNG signals
-    prng_update_o        = 1'b0;
-    prng_reseed_req_o    = 1'b0;
+    prng_update_o       = 1'b0;
+    prng_reseed_req_o   = 1'b0;
 
     // Cipher data path
-    state_sel_o          = STATE_ROUND;
-    state_we_o           = 1'b0;
-    add_rk_sel_o         = ADD_RK_ROUND;
-    sub_bytes_en_o       = 1'b0;
-    sub_bytes_out_ack_o  = 1'b0;
+    state_sel_o         = STATE_ROUND;
+    state_we_o          = 1'b0;
+    add_rk_sel_o        = ADD_RK_ROUND;
+    sub_bytes_en_o      = 1'b0;
+    sub_bytes_out_ack_o = 1'b0;
 
     // Key expand data path
+`ifdef BUGNUMAESCICONFSM1
+    key_full_sel_o       = KEY_FULL_ROUND;
+    key_full_we_o        = 1'b1;
+    key_dec_sel_o        = KEY_DEC_EXPAND;
+    key_dec_we_o         = 1'b1;
+    key_expand_en_o      = 1'b0;
+    key_expand_out_ack_o = 1'b0;
+    key_expand_clear_o   = 1'b0;
+    key_words_sel_o      = KEY_WORDS_ZERO;
+    round_key_sel_o      = ROUND_KEY_DIRECT;
+`elsif BUGNUMAESCICONFSM2
+    key_full_sel_o       = ~KEY_FULL_ROUND;
+    key_full_we_o        = 1'b0;
+    key_dec_sel_o        = ~KEY_DEC_EXPAND;
+    key_dec_we_o         = 1'b0;
+    key_expand_en_o      = 1'b0;
+    key_expand_out_ack_o = 1'b0;
+    key_expand_clear_o   = 1'b0;
+    key_words_sel_o      = KEY_WORDS_ZERO;
+    round_key_sel_o      = ROUND_KEY_DIRECT;
+`elsif BUGNUMAESCICONFSM1T
+    key_full_sel_o       = KEY_FULL_ROUND;
+    key_full_we_o        = 1'b0;
+    key_dec_sel_o        = KEY_DEC_EXPAND;
+    key_dec_we_o         = 1'b1;
+    key_expand_en_o      = 1'b1;
+    key_expand_out_ack_o = 1'b1;
+    key_expand_clear_o   = 1'b1;
+    key_words_sel_o      = KEY_WORDS_ZERO;
+    round_key_sel_o      = ROUND_KEY_DIRECT;
+`else
     key_full_sel_o       = KEY_FULL_ROUND;
     key_full_we_o        = 1'b0;
     key_dec_sel_o        = KEY_DEC_EXPAND;
@@ -130,27 +162,28 @@ module aes_cipher_control_fsm import aes_pkg::*;
     key_expand_clear_o   = 1'b0;
     key_words_sel_o      = KEY_WORDS_ZERO;
     round_key_sel_o      = ROUND_KEY_DIRECT;
+`endif
 
     // FSM
-    aes_cipher_ctrl_ns   = aes_cipher_ctrl_cs;
-    num_rounds_d         = num_rounds_q;
-    rnd_ctr_d            = rnd_ctr_q;
-    crypt_d_o            = crypt_q_i;
-    dec_key_gen_d_o      = dec_key_gen_q_i;
-    prng_reseed_d_o      = prng_reseed_q_i;
-    key_clear_d_o        = key_clear_q_i;
-    data_out_clear_d_o   = data_out_clear_q_i;
-    prng_reseed_done_d   = prng_reseed_done_q | prng_reseed_ack_i;
-    advance              = 1'b0;
-    cyc_ctr_d            = (SecSBoxImpl == SBoxImplDom) ? cyc_ctr_q + 3'd1 : 3'd0;
+    aes_cipher_ctrl_ns = aes_cipher_ctrl_cs;
+    num_rounds_d       = num_rounds_q;
+    rnd_ctr_d          = rnd_ctr_q;
+    crypt_d_o          = crypt_q_i;
+    dec_key_gen_d_o    = dec_key_gen_q_i;
+    prng_reseed_d_o    = prng_reseed_q_i;
+    key_clear_d_o      = key_clear_q_i;
+    data_out_clear_d_o = data_out_clear_q_i;
+    prng_reseed_done_d = prng_reseed_done_q | prng_reseed_ack_i;
+    advance            = 1'b0;
+    cyc_ctr_d          = (SecSBoxImpl == SBoxImplDom) ? cyc_ctr_q + 3'd1 : 3'd0;
 
     // Alert
-    alert_o              = 1'b0;
+    alert_o            = 1'b0;
 
     unique case (aes_cipher_ctrl_cs)
 
       CIPHER_CTRL_IDLE: begin
-        cyc_ctr_d = 3'd0;
+        cyc_ctr_d  = 3'd0;
 
         // Signal that we are ready, wait for handshake.
         in_ready_o = 1'b1;
@@ -173,15 +206,15 @@ module aes_cipher_control_fsm import aes_pkg::*;
 
           end else if (dec_key_gen_i || crypt_i) begin
             // Start encryption/decryption or generation of start key for decryption.
-            crypt_d_o       = ~dec_key_gen_i & crypt_i;
-            dec_key_gen_d_o =  dec_key_gen_i;
+            crypt_d_o = ~dec_key_gen_i & crypt_i;
+            dec_key_gen_d_o = dec_key_gen_i;
 
             // Latch whether we shall reseed the masking PRNG.
             prng_reseed_d_o = SecMasking & prng_reseed_i;
 
             // Load input data to state
             state_sel_o = dec_key_gen_i ? STATE_CLEAR : STATE_INIT;
-            state_we_o  = 1'b1;
+            state_we_o = 1'b1;
 
             // Make the masking PRNG advance. The current pseudo-random data is used to mask the
             // input data.
@@ -195,13 +228,11 @@ module aes_cipher_control_fsm import aes_pkg::*;
                         (op_i == CIPH_FWD) ? KEY_FULL_ENC_INIT :
                         (op_i == CIPH_INV) ? KEY_FULL_DEC_INIT :
                                              KEY_FULL_ENC_INIT;
-            key_full_we_o  = 1'b1;
+            key_full_we_o = 1'b1;
 
             // Load num_rounds, initialize round counter.
-            num_rounds_d = (key_len_i == AES_128) ? 4'd10 :
-                           (key_len_i == AES_192) ? 4'd12 :
-                                                    4'd14;
-            rnd_ctr_d          = '0;
+            num_rounds_d = (key_len_i == AES_128) ? 4'd10 : (key_len_i == AES_192) ? 4'd12 : 4'd14;
+            rnd_ctr_d = '0;
             aes_cipher_ctrl_ns = CIPHER_CTRL_INIT;
 
           end else begin
@@ -279,20 +310,20 @@ module aes_cipher_control_fsm import aes_pkg::*;
         // with state_we_o / based on key_full_we_o. The PRNG itself is updated in every clock
         // cycle to increase the noise.
         advance = key_expand_out_req_i & cyc_ctr_expr & (dec_key_gen_q_i | sub_bytes_out_req_i);
-        prng_update_o   = SecMasking;
-        sub_bytes_en_o  = ~dec_key_gen_q_i;
+        prng_update_o = SecMasking;
+        sub_bytes_en_o = ~dec_key_gen_q_i;
         key_expand_en_o = 1'b1;
 
         if (advance) begin
           sub_bytes_out_ack_o  = ~dec_key_gen_q_i;
           key_expand_out_ack_o = 1'b1;
 
-          state_we_o    = ~dec_key_gen_q_i;
-          key_full_we_o = 1'b1;
+          state_we_o           = ~dec_key_gen_q_i;
+          key_full_we_o        = 1'b1;
 
           // Update round
-          rnd_ctr_d     = rnd_ctr_q + 4'b0001;
-          cyc_ctr_d     = 3'd0;
+          rnd_ctr_d            = rnd_ctr_q + 4'b0001;
+          cyc_ctr_d            = 3'd0;
 
           // Are we doing the last regular round?
           if (rnd_ctr_q >= num_rounds_regular) begin
@@ -305,7 +336,7 @@ module aes_cipher_control_fsm import aes_pkg::*;
               // Indicate that we are done, try to perform the handshake. But we don't wait here.
               // If we don't get the handshake now, we will wait in the finish state. When using
               // masking, we only finish if the masking PRNG has been reseeded.
-              out_valid_o = SecMasking ? (prng_reseed_q_i ? prng_reseed_done_q : 1'b1) : 1'b1;
+              out_valid_o  = SecMasking ? (prng_reseed_q_i ? prng_reseed_done_q : 1'b1) : 1'b1;
               if (out_valid_o && out_ready_i) begin
                 // Go to idle state directly.
                 dec_key_gen_d_o    = 1'b0;
@@ -313,8 +344,8 @@ module aes_cipher_control_fsm import aes_pkg::*;
                 aes_cipher_ctrl_ns = CIPHER_CTRL_IDLE;
               end
             end
-          end // rnd_ctr_q
-        end // SubBytes/KeyExpand REQ/ACK
+          end  // rnd_ctr_q
+        end  // SubBytes/KeyExpand REQ/ACK
       end
 
       CIPHER_CTRL_FINISH: begin
@@ -347,14 +378,13 @@ module aes_cipher_control_fsm import aes_pkg::*;
         // - all mux selector signals are valid (don't release data in case of errors), and
         // - all sparsely encoded signals are valid (don't release data in case of errors).
         // Perform both handshakes simultaneously.
-        advance        = (sub_bytes_out_req_i & cyc_ctr_expr) | dec_key_gen_q_i;
+        advance = (sub_bytes_out_req_i & cyc_ctr_expr) | dec_key_gen_q_i;
         sub_bytes_en_o = ~dec_key_gen_q_i;
         out_valid_o    = (mux_sel_err_i || sp_enc_err_i || op_err_i) ? 1'b0         :
             SecMasking ? (prng_reseed_q_i ? prng_reseed_done_q & advance : advance) : advance;
 
         // Stop updating the cycle counter once we have valid output.
-        cyc_ctr_d =
-            (SecSBoxImpl == SBoxImplDom) ? (!advance ? cyc_ctr_q + 3'd1 : cyc_ctr_q) : 3'd0;
+        cyc_ctr_d = (SecSBoxImpl == SBoxImplDom) ? (!advance ? cyc_ctr_q + 3'd1 : cyc_ctr_q) : 3'd0;
 
         // The DOM S-Boxes consume fresh PRD only in the first clock cycle and that PRD is taken
         // from the buffer stages updated with state_we_o / based on key_full_we_o. The PRNG itself
@@ -448,8 +478,8 @@ module aes_cipher_control_fsm import aes_pkg::*;
   end
 
   // SEC_CM: CIPHER.FSM.SPARSE
-  `PRIM_FLOP_SPARSE_FSM(u_state_regs, aes_cipher_ctrl_ns,
-      aes_cipher_ctrl_cs, aes_cipher_ctrl_e, CIPHER_CTRL_IDLE)
+  `PRIM_FLOP_SPARSE_FSM(u_state_regs, aes_cipher_ctrl_ns, aes_cipher_ctrl_cs, aes_cipher_ctrl_e,
+                        CIPHER_CTRL_IDLE)
 
   always_ff @(posedge clk_i or negedge rst_ni) begin : reg_fsm
     if (!rst_ni) begin
@@ -493,23 +523,10 @@ module aes_cipher_control_fsm import aes_pkg::*;
   `ASSERT_STATIC_LINT_ERROR(AesCipherControlFsmSecSBoxImplNonDefault, SecSBoxImpl == SBoxImplDom)
 
   // Selectors must be known/valid
-  `ASSERT(AesCiphOpValid, cfg_valid_i |-> op_i inside {
-      CIPH_FWD,
-      CIPH_INV
-      })
-  `ASSERT(AesKeyLenValid, cfg_valid_i |-> key_len_i inside {
-      AES_128,
-      AES_192,
-      AES_256
-      })
-  `ASSERT(AesCipherControlStateValid, !alert_o |-> aes_cipher_ctrl_cs inside {
-      CIPHER_CTRL_IDLE,
-      CIPHER_CTRL_INIT,
-      CIPHER_CTRL_ROUND,
-      CIPHER_CTRL_FINISH,
-      CIPHER_CTRL_PRNG_RESEED,
-      CIPHER_CTRL_CLEAR_S,
-      CIPHER_CTRL_CLEAR_KD
-      })
+  `ASSERT(AesCiphOpValid, cfg_valid_i |-> op_i inside {CIPH_FWD, CIPH_INV})
+  `ASSERT(AesKeyLenValid, cfg_valid_i |-> key_len_i inside {AES_128, AES_192, AES_256})
+  `ASSERT(
+      AesCipherControlStateValid,
+      !alert_o |-> aes_cipher_ctrl_cs inside {CIPHER_CTRL_IDLE, CIPHER_CTRL_INIT, CIPHER_CTRL_ROUND, CIPHER_CTRL_FINISH, CIPHER_CTRL_PRNG_RESEED, CIPHER_CTRL_CLEAR_S, CIPHER_CTRL_CLEAR_KD})
 
 endmodule
