@@ -113,6 +113,29 @@ module aes_ctr_fsm
       end
 `endif
 
+`ifdef BUGNUMCTRFSM5
+      CTR_INCR: begin
+        // Increment slice index.
+        ctr_slice_idx_d = SliceIdxWidth'(1);
+        ctr_carry_d     = ctr_value[SliceSizeCtr];
+        ctr_we_o        = 1'b1;
+
+        if (ctr_slice_idx_q == {SliceIdxWidth{1'b1}}) begin
+          aes_ctr_ns = CTR_IDLE;
+        end
+      end
+`elsif BUGNUMCTRFSM6
+      CTR_INCR: begin
+        // Increment slice index.
+        ctr_slice_idx_d = ctr_slice_idx_q;
+        ctr_carry_d     = ctr_value[SliceSizeCtr-1];
+        ctr_we_o        = 1'b1;
+
+        if (ctr_slice_idx_q == {SliceIdxWidth{1'b1}}) begin
+          aes_ctr_ns = CTR_IDLE;
+        end
+      end
+`else
       CTR_INCR: begin
         // Increment slice index.
         ctr_slice_idx_d = ctr_slice_idx_q + SliceIdxWidth'(1);
@@ -123,7 +146,35 @@ module aes_ctr_fsm
           aes_ctr_ns = CTR_IDLE;
         end
       end
+`endif
 
+`ifdef BUGNUMCTRFSM3T
+      CTR_ERROR: begin
+        // SEC_CM: CTR.FSM.LOCAL_ESC
+        // Terminal error state
+        alert_o = 1'b0;
+      end
+
+      // We should never get here. If we do (e.g. via a malicious
+      // glitch), error out immediately.
+      default: begin
+        aes_ctr_ns = CTR_IDLE;
+        alert_o = 1'b1;
+      end
+`elsif BUGNUMCTRFSM4T
+      CTR_ERROR: begin
+        // SEC_CM: CTR.FSM.LOCAL_ESC
+        // Terminal error state
+        alert_o = 1'b1;
+      end
+
+      // We should never get here. If we do (e.g. via a malicious
+      // glitch), error out immediately.
+      default: begin
+        aes_ctr_ns = CTR_IDLE;
+        alert_o = 1'b0;
+      end
+`else
       CTR_ERROR: begin
         // SEC_CM: CTR.FSM.LOCAL_ESC
         // Terminal error state
@@ -136,6 +187,7 @@ module aes_ctr_fsm
         aes_ctr_ns = CTR_ERROR;
         alert_o = 1'b1;
       end
+`endif
     endcase
 
     // Unconditionally jump into the terminal error state in case an error is detected.
