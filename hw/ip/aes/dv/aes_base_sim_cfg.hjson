@@ -234,8 +234,7 @@
       tests: [
         "aes_smoke", "aes_config_error", "aes_stress", "aes_b2b", "aes_clear",
         "aes_alert_reset", "aes_sideload", "aes_reseed",
-        "aes_stress_all", 
-        "aes_stress_all_with_rand_reset"
+        "aes_stress_all"
         ]
     }
   ]

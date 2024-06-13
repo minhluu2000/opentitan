@@ -10,4 +10,4 @@
 cd ${RESEARCH_DIR}/github/designs/opentitan_1
 source env_setup.bash
 python3 /mnt/shared-scratch/Hu_J/minh.luu/github/sim_extract/design_titan/_job/data_extractor_1.py
-python3 /mnt/shared-scratch/Hu_J/minh.luu/github/sim_extract/script_examples/sendmail.py "Bug Extraction Done" "Job number: $SLURM_JOB_ID\n" self
+python3 /mnt/shared-scratch/Hu_J/minh.luu/github/sim_extract/script_examples/sendmail.py "Bug Extraction Done" "Job number: ${SLURM_JOB_ID}." self

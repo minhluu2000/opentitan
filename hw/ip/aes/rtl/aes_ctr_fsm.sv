@@ -71,15 +71,47 @@ module aes_ctr_fsm
 `endif
 
     unique case (aes_ctr_cs)
+`ifdef BUGNUMCTRFSM3
       CTR_IDLE: begin
         ready_o = 1'b1;
         if (incr_i == 1'b1) begin
           // Initialize slice index and carry bit.
-          ctr_slice_idx_d = '1; // 
-          ctr_carry_d     = 1'b0; //
+          ctr_slice_idx_d = '1;
+          ctr_carry_d     = 1'b1;
           aes_ctr_ns      = CTR_INCR;
         end
       end
+`elsif BUGNUMCTRFSM4
+      CTR_IDLE: begin
+        ready_o = 1'b1;
+        if (incr_i == 1'b1) begin
+          // Initialize slice index and carry bit.
+          ctr_slice_idx_d = '0;
+          ctr_carry_d     = 1'b0;
+          aes_ctr_ns      = CTR_INCR;
+        end
+      end
+`elsif BUGNUMCTRFSM2T
+      CTR_IDLE: begin
+        ready_o = 1'b1;
+        if (incr_i == 1'b1) begin
+          // Initialize slice index and carry bit.
+          ctr_slice_idx_d = '0;
+          ctr_carry_d     = 1'b0;
+          aes_ctr_ns      = CTR_INCR;
+        end
+      end
+`else
+      CTR_IDLE: begin
+        ready_o = 1'b1;
+        if (incr_i == 1'b1) begin
+          // Initialize slice index and carry bit.
+          ctr_slice_idx_d = '0;
+          ctr_carry_d     = 1'b1;
+          aes_ctr_ns      = CTR_INCR;
+        end
+      end
+`endif
 
       CTR_INCR: begin
         // Increment slice index.
