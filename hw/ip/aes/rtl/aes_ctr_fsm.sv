@@ -70,14 +70,13 @@ module aes_ctr_fsm
     ctr_carry_d     = ctr_carry_q;
 `endif
 
-    
     unique case (aes_ctr_cs)
       CTR_IDLE: begin
-        ready_o = 1'b0;
+        ready_o = 1'b1;
         if (incr_i == 1'b1) begin
           // Initialize slice index and carry bit.
-          ctr_slice_idx_d = '0;
-          ctr_carry_d     = 1'b1;
+          ctr_slice_idx_d = '1; // 
+          ctr_carry_d     = 1'b0; //
           aes_ctr_ns      = CTR_INCR;
         end
       end

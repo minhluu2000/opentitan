@@ -15,6 +15,17 @@
 
 cd ${RESEARCH_DIR}/github/designs/opentitan_1
 source env_setup.bash
-util/dvsim/dvsim.py hw/ip/aes/dv/aes_base_sim_cfg.hjson -i all --fixed-seed=1 --waves fsdb --build-modes aes_masked --verbose debug --build-opts +define+BUGNUMCTRFSM3
-# util/dvsim/dvsim.py hw/ip/aes/dv/aes_base_sim_cfg.hjson -i all --fixed-seed=1 --waves fsdb --build-modes aes_masked --verbose debug --build-opts +define+BUGNUMCTRFSM2
-# util/dvsim/dvsim.py hw/ip/aes/dv/aes_base_sim_cfg.hjson -i all --fixed-seed=1 --waves fsdb --build-modes aes_masked --verbose debug --build-opts +define+BUGNUMCTRFSM1T
+# Keep track of the number of bugs injected
+BUGINJECTED="BUGINJECTED:"
+for i in $(seq 1 2)
+do
+    util/dvsim/dvsim.py hw/ip/aes/dv/aes_base_sim_cfg.hjson -i all --fixed-seed=1 --waves fsdb --build-modes aes_masked --verbose debug --build-opts +define+BUGNUMCTRFSM$i
+    BUGINJECTED="$BUGINJECTED $i"
+done 
+for i in $(seq 1 1)
+do
+    util/dvsim/dvsim.py hw/ip/aes/dv/aes_base_sim_cfg.hjson -i all --fixed-seed=1 --waves fsdb --build-modes aes_masked --verbose debug --build-opts +define+BUGNUMCTRFSM$iT
+    BUGINJECTED="$BUGINJECTED $iT"
+done 
+
+python3 /mnt/shared-scratch/Hu_J/minh.luu/github/sim_extract/script_examples/sendmail.py "Bug Injection Done" "The following bugs have been injected: $BUGINJECTED" self
