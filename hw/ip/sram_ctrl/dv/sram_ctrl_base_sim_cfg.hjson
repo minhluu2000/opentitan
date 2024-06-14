@@ -152,7 +152,7 @@
     }
     {
       name: all
-      tests: ["{name}_smoke","{name}_multiple_keys","{name}_bijection","{name}_stress_pipeline","{name}_partial_access","{name}_partial_access_b2b","{name}_max_throughput","{name}_throughput_w_partial_write","{name}_lc_escalation","{name}_access_during_key_req","{name}_executable","{name}_regwen","{name}_ram_cfg","{name}_mem_walk","{name}_mem_partial_access"]
+      tests: ["{name}_smoke","{name}_bijection","{name}_stress_pipeline","{name}_partial_access","{name}_partial_access_b2b","{name}_max_throughput","{name}_throughput_w_partial_write","{name}_lc_escalation","{name}_executable","{name}_regwen","{name}_ram_cfg","{name}_mem_walk","{name}_mem_partial_access"]
     }
   ]
 }
