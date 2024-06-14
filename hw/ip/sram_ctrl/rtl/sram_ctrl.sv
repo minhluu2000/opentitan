@@ -300,12 +300,24 @@ module sram_ctrl
   // the req/ack protocol as described in more details here:
   // https://docs.opentitan.org/hw/ip/otp_ctrl/doc/index.html#interfaces-to-sram-and-otbn-scramblers
   logic key_req, key_ack;
+`ifdef BUGNUMSRAMCON6T
+  assign key_req = reg2hw.ctrl.renew_scr_key.q |
+                   reg2hw.ctrl.renew_scr_key.qe &&
+                   !key_req_pending_q | !init_q;
+`elsif BUGNUMSRAMCON7T
+  // no assignment key_req
+`else
   assign key_req = reg2hw.ctrl.renew_scr_key.q &&
                    reg2hw.ctrl.renew_scr_key.qe &&
                    !key_req_pending_q && // Ignore new requests while a request is already pending.
       !init_q;  // Ignore new requests while memory init is already pending.
+`endif
 
+`ifdef BUGNUMSRAMCON15
+  assign key_req_pending_d = (key_ack) ? 1'b1 : (key_req) ? 1'b0 : key_req_pending_q;
+`else
   assign key_req_pending_d = (key_req) ? 1'b1 : (key_ack) ? 1'b0 : key_req_pending_q;
+`endif
 
   // Clear this bit on local escalation.
   assign hw2reg.status.scr_key_valid.d = key_ack & ~key_req & ~local_esc;
@@ -624,10 +636,16 @@ module sram_ctrl
   // read-modify-write transaction or readback in the SRAM adapter. In that case we force key_valid
   // high to enable that to complete so it returns a response, the TL gate won't accept any new
   // transactions and the SRAM keys have been clobbered already.
+
+`ifdef BUGNUMSRAMCON3T
+  assign key_valid =
+    (key_req_pending_q)         ? 1'b1 :
+    (reg2hw.status.escalated.q) ? (tl_gate_resp_pending & sram_compound_txn_in_progress) : 1'b0;
+`else
   assign key_valid =
     (key_req_pending_q)         ? 1'b0 :
     (reg2hw.status.escalated.q) ? (tl_gate_resp_pending & sram_compound_txn_in_progress) : 1'b1;
-
+`endif
   // SEC_CM: MEM.SCRAMBLE, ADDR.SCRAMBLE
   prim_ram_1p_scr #(
       .Width(DataWidth),
