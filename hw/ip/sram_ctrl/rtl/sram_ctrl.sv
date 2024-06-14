@@ -11,47 +11,47 @@ module sram_ctrl
   import sram_ctrl_pkg::*;
   import sram_ctrl_reg_pkg::*;
 #(
-  // Number of words stored in the SRAM.
-  parameter int MemSizeRam = 32'h1000,
-  // Enable asynchronous transitions on alerts.
-  parameter logic [NumAlerts-1:0] AlertAsyncOn          = {NumAlerts{1'b1}},
-  // Enables the execute from SRAM feature.
-  parameter bit InstrExec                               = 1,
-  // Random netlist constants
-  parameter otp_ctrl_pkg::sram_key_t   RndCnstSramKey   = RndCnstSramKeyDefault,
-  parameter otp_ctrl_pkg::sram_nonce_t RndCnstSramNonce = RndCnstSramNonceDefault,
-  parameter lfsr_seed_t                RndCnstLfsrSeed  = RndCnstLfsrSeedDefault,
-  parameter lfsr_perm_t                RndCnstLfsrPerm  = RndCnstLfsrPermDefault
+    // Number of words stored in the SRAM.
+    parameter int                                        MemSizeRam       = 32'h1000,
+    // Enable asynchronous transitions on alerts.
+    parameter logic                      [NumAlerts-1:0] AlertAsyncOn     = {NumAlerts{1'b1}},
+    // Enables the execute from SRAM feature.
+    parameter bit                                        InstrExec        = 1,
+    // Random netlist constants
+    parameter otp_ctrl_pkg::sram_key_t                   RndCnstSramKey   = RndCnstSramKeyDefault,
+    parameter otp_ctrl_pkg::sram_nonce_t                 RndCnstSramNonce = RndCnstSramNonceDefault,
+    parameter lfsr_seed_t                                RndCnstLfsrSeed  = RndCnstLfsrSeedDefault,
+    parameter lfsr_perm_t                                RndCnstLfsrPerm  = RndCnstLfsrPermDefault
 ) (
-  // SRAM Clock
-  input  logic                                       clk_i,
-  input  logic                                       rst_ni,
-  // OTP Clock (for key interface)
-  input  logic                                       clk_otp_i,
-  input  logic                                       rst_otp_ni,
-  // Bus Interface (device) for SRAM
-  input  tlul_pkg::tl_h2d_t                          ram_tl_i,
-  output tlul_pkg::tl_d2h_t                          ram_tl_o,
-  // Bus Interface (device) for CSRs
-  input  tlul_pkg::tl_h2d_t                          regs_tl_i,
-  output tlul_pkg::tl_d2h_t                          regs_tl_o,
-  // Alert outputs.
-  input  prim_alert_pkg::alert_rx_t [NumAlerts-1:0]  alert_rx_i,
-  output prim_alert_pkg::alert_tx_t [NumAlerts-1:0]  alert_tx_o,
-  // Life-cycle escalation input (scraps the scrambling keys)
-  // SEC_CM: LC_ESCALATE_EN.INTERSIG.MUBI
-  input  lc_ctrl_pkg::lc_tx_t                        lc_escalate_en_i,
-  // SEC_CM: LC_HW_DEBUG_EN.INTERSIG.MUBI
-  input  lc_ctrl_pkg::lc_tx_t                        lc_hw_debug_en_i,
-  // Otp configuration for sram execution
-  // SEC_CM: EXEC.INTERSIG.MUBI
-  input  prim_mubi_pkg::mubi8_t                      otp_en_sram_ifetch_i,
-  // Key request to OTP (running on clk_fixed)
-  // SEC_CM: SCRAMBLE.KEY.SIDELOAD
-  output otp_ctrl_pkg::sram_otp_key_req_t            sram_otp_key_o,
-  input  otp_ctrl_pkg::sram_otp_key_rsp_t            sram_otp_key_i,
-  // config
-  input  prim_ram_1p_pkg::ram_1p_cfg_t               cfg_i
+    // SRAM Clock
+    input  logic                                            clk_i,
+    input  logic                                            rst_ni,
+    // OTP Clock (for key interface)
+    input  logic                                            clk_otp_i,
+    input  logic                                            rst_otp_ni,
+    // Bus Interface (device) for SRAM
+    input  tlul_pkg::tl_h2d_t                               ram_tl_i,
+    output tlul_pkg::tl_d2h_t                               ram_tl_o,
+    // Bus Interface (device) for CSRs
+    input  tlul_pkg::tl_h2d_t                               regs_tl_i,
+    output tlul_pkg::tl_d2h_t                               regs_tl_o,
+    // Alert outputs.
+    input  prim_alert_pkg::alert_rx_t       [NumAlerts-1:0] alert_rx_i,
+    output prim_alert_pkg::alert_tx_t       [NumAlerts-1:0] alert_tx_o,
+    // Life-cycle escalation input (scraps the scrambling keys)
+    // SEC_CM: LC_ESCALATE_EN.INTERSIG.MUBI
+    input  lc_ctrl_pkg::lc_tx_t                             lc_escalate_en_i,
+    // SEC_CM: LC_HW_DEBUG_EN.INTERSIG.MUBI
+    input  lc_ctrl_pkg::lc_tx_t                             lc_hw_debug_en_i,
+    // Otp configuration for sram execution
+    // SEC_CM: EXEC.INTERSIG.MUBI
+    input  prim_mubi_pkg::mubi8_t                           otp_en_sram_ifetch_i,
+    // Key request to OTP (running on clk_fixed)
+    // SEC_CM: SCRAMBLE.KEY.SIDELOAD
+    output otp_ctrl_pkg::sram_otp_key_req_t                 sram_otp_key_o,
+    input  otp_ctrl_pkg::sram_otp_key_rsp_t                 sram_otp_key_i,
+    // config
+    input  prim_ram_1p_pkg::ram_1p_cfg_t                    cfg_i
 );
 
   import lc_ctrl_pkg::lc_tx_t;
@@ -76,19 +76,20 @@ module sram_ctrl
   /////////////////////////////////////
   // Anchor incoming seeds and constants
   /////////////////////////////////////
-  localparam int TotalAnchorWidth = $bits(otp_ctrl_pkg::sram_key_t) +
-                                    $bits(otp_ctrl_pkg::sram_nonce_t);
+  localparam int TotalAnchorWidth = $bits(
+      otp_ctrl_pkg::sram_key_t
+  ) + $bits(
+      otp_ctrl_pkg::sram_nonce_t
+  );
 
-  otp_ctrl_pkg::sram_key_t cnst_sram_key;
+  otp_ctrl_pkg::sram_key_t   cnst_sram_key;
   otp_ctrl_pkg::sram_nonce_t cnst_sram_nonce;
 
   prim_sec_anchor_buf #(
-    .Width(TotalAnchorWidth)
+      .Width(TotalAnchorWidth)
   ) u_seed_anchor (
-    .in_i({RndCnstSramKey,
-           RndCnstSramNonce}),
-    .out_o({cnst_sram_key,
-            cnst_sram_nonce})
+      .in_i ({RndCnstSramKey, RndCnstSramNonce}),
+      .out_o({cnst_sram_key, cnst_sram_nonce})
   );
 
 
@@ -106,18 +107,18 @@ module sram_ctrl
   // SEC_CM: CTRL.CONFIG.REGWEN
   // SEC_CM: EXEC.CONFIG.REGWEN
   sram_ctrl_regs_reg_top u_reg_regs (
-    .clk_i,
-    .rst_ni,
-    .tl_i      (regs_tl_i),
-    .tl_o      (regs_tl_o),
-    .reg2hw,
-    .hw2reg,
-    // SEC_CM: BUS.INTEGRITY
-    .intg_err_o(bus_integ_error[0])
-   );
+      .clk_i,
+      .rst_ni,
+      .tl_i      (regs_tl_i),
+      .tl_o      (regs_tl_o),
+      .reg2hw,
+      .hw2reg,
+      // SEC_CM: BUS.INTEGRITY
+      .intg_err_o(bus_integ_error[0])
+  );
 
   // Key and attribute outputs to scrambling device
-  logic [otp_ctrl_pkg::SramKeyWidth-1:0]   key_d, key_q;
+  logic [otp_ctrl_pkg::SramKeyWidth-1:0] key_d, key_q;
   logic [otp_ctrl_pkg::SramNonceWidth-1:0] nonce_d, nonce_q;
 
   // tie-off unused nonce bits
@@ -133,7 +134,7 @@ module sram_ctrl
   logic alert_test;
   assign alert_test = reg2hw.alert_test.q & reg2hw.alert_test.qe;
 
-  assign hw2reg.status.bus_integ_error.d  = 1'b1;
+  assign hw2reg.status.bus_integ_error.d = 1'b1;
   assign hw2reg.status.bus_integ_error.de = |bus_integ_error;
 
   logic init_error;
@@ -152,17 +153,17 @@ module sram_ctrl
   assign alert_req = (|bus_integ_error) | init_error | readback_error | sram_alert;
 
   prim_alert_sender #(
-    .AsyncOn(AlertAsyncOn[0]),
-    .IsFatal(1)
+      .AsyncOn(AlertAsyncOn[0]),
+      .IsFatal(1)
   ) u_prim_alert_sender_parity (
-    .clk_i,
-    .rst_ni,
-    .alert_test_i  ( alert_test    ),
-    .alert_req_i   ( alert_req     ),
-    .alert_ack_o   (               ),
-    .alert_state_o (               ),
-    .alert_rx_i    ( alert_rx_i[0] ),
-    .alert_tx_o    ( alert_tx_o[0] )
+      .clk_i,
+      .rst_ni,
+      .alert_test_i (alert_test),
+      .alert_req_i  (alert_req),
+      .alert_ack_o  (),
+      .alert_state_o(),
+      .alert_rx_i   (alert_rx_i[0]),
+      .alert_tx_o   (alert_tx_o[0])
   );
 
   /////////////////////////
@@ -171,18 +172,22 @@ module sram_ctrl
 
   lc_tx_t [1:0] escalate_en;
   prim_lc_sync #(
-    .NumCopies (2)
+      .NumCopies(2)
   ) u_prim_lc_sync (
-    .clk_i,
-    .rst_ni,
-    .lc_en_i (lc_escalate_en_i),
-    .lc_en_o (escalate_en)
+      .clk_i,
+      .rst_ni,
+      .lc_en_i(lc_escalate_en_i),
+      .lc_en_o(escalate_en)
   );
 
   // SEC_CM: KEY.GLOBAL_ESC
   logic escalate;
   assign escalate = lc_tx_test_true_loose(escalate_en[0]);
-  assign hw2reg.status.escalated.d  = 1'b1;
+`ifdef BUGNUMSRAMCON1  // fail 1
+  assign hw2reg.status.escalated.d = 1'b0;
+`else
+  assign hw2reg.status.escalated.d = 1'b1;
+`endif
   assign hw2reg.status.escalated.de = escalate;
 
   // SEC_CM: KEY.LOCAL_ESC
@@ -209,8 +214,9 @@ module sram_ctrl
   // Convert registered, local escalation sources to a multibit signal and combine this with
   // the incoming escalation enable signal before feeding into the TL-UL gate further below.
   lc_tx_t lc_tlul_gate_en;
-  assign lc_tlul_gate_en = lc_tx_inv(lc_tx_or_hi(escalate_en[1],
-                                                 lc_tx_bool_to_lc_tx(local_esc_reg)));
+  assign lc_tlul_gate_en = lc_tx_inv(
+      lc_tx_or_hi(escalate_en[1], lc_tx_bool_to_lc_tx(local_esc_reg))
+  );
   ///////////////////////
   // HW Initialization //
   ///////////////////////
@@ -223,14 +229,24 @@ module sram_ctrl
                      !init_q; // Ignore new requests while memory init is already pending.
 
   logic init_d, init_done;
-  assign init_d = (init_done) ? 1'b0 :
-                  (init_trig) ? 1'b1 : init_q;
+`ifdef BUGNUMSRAMCON2  //fail all
+  assign init_d = (init_done) ? 1'b1 : (init_trig) ? 1'b0 : init_q;
+`else
+  assign init_d = (init_done) ? 1'b0 : (init_trig) ? 1'b1 : init_q;
+`endif
 
   always_ff @(posedge clk_i or negedge rst_ni) begin : p_init_reg
-    if(!rst_ni) begin
+    if (!rst_ni) begin
       init_q <= 1'b0;
     end else begin
+`ifdef BUGNUMSRAMCON3  //fail all
+      init_q <= ~init_d;
+`elsif BUGNUMSRAMCON11
+      // nothing
+`else
+
       init_q <= init_d;
+`endif
     end
   end
 
@@ -239,28 +255,36 @@ module sram_ctrl
   logic init_req;
   logic [AddrWidth-1:0] init_cnt;
   logic key_req_pending_d, key_req_pending_q;
+`ifdef BUGNUMSRAMCON4  //fail all 
+  assign init_req  = init_q & key_req_pending_q;
+  assign init_done = (init_cnt == AddrWidth'(Depth - 1)) & init_req;
+`elsif BUGNUMSRAMCON5  //fail 13
+  assign init_req  = init_q & ~key_req_pending_q;
+  assign init_done = (init_cnt == AddrWidth'(Depth - 0)) & init_req;
+`else
   assign init_req  = init_q & ~key_req_pending_q;
   assign init_done = (init_cnt == AddrWidth'(Depth - 1)) & init_req;
+`endif
 
   // We employ two redundant counters to guard against FI attacks.
   // If any of the two is glitched and the two counter states do not agree,
   // we trigger an alert.
   // SEC_CM: INIT.CTR.REDUN
   prim_count #(
-    .Width(AddrWidth)
+      .Width(AddrWidth)
   ) u_prim_count (
-    .clk_i,
-    .rst_ni,
-    .clr_i(init_trig),
-    .set_i(1'b0),
-    .set_cnt_i('0),
-    .incr_en_i(init_req),
-    .decr_en_i(1'b0),
-    .step_i(AddrWidth'(1)),
-    .commit_i(1'b1),
-    .cnt_o(init_cnt),
-    .cnt_after_commit_o(),
-    .err_o(init_error)
+      .clk_i,
+      .rst_ni,
+      .clr_i(init_trig),
+      .set_i(1'b0),
+      .set_cnt_i('0),
+      .incr_en_i(init_req),
+      .decr_en_i(1'b0),
+      .step_i(AddrWidth'(1)),
+      .commit_i(1'b1),
+      .cnt_o(init_cnt),
+      .cnt_after_commit_o(),
+      .err_o(init_error)
   );
 
   // Clear this bit on local escalation.
@@ -279,37 +303,64 @@ module sram_ctrl
   assign key_req = reg2hw.ctrl.renew_scr_key.q &&
                    reg2hw.ctrl.renew_scr_key.qe &&
                    !key_req_pending_q && // Ignore new requests while a request is already pending.
-                   !init_q; // Ignore new requests while memory init is already pending.
+      !init_q;  // Ignore new requests while memory init is already pending.
 
-  assign key_req_pending_d = (key_req) ? 1'b1 :
-                             (key_ack) ? 1'b0 : key_req_pending_q;
+  assign key_req_pending_d = (key_req) ? 1'b1 : (key_ack) ? 1'b0 : key_req_pending_q;
 
   // Clear this bit on local escalation.
-  assign hw2reg.status.scr_key_valid.d   = key_ack & ~key_req & ~local_esc;
-  assign hw2reg.status.scr_key_valid.de  = key_req | key_ack | local_esc;
+  assign hw2reg.status.scr_key_valid.d = key_ack & ~key_req & ~local_esc;
+  assign hw2reg.status.scr_key_valid.de = key_req | key_ack | local_esc;
 
   // As opposed to scr_key_valid, SW is responsible for clearing this register.
   // It is not automatically cleared by HW, except when escalating.
-  assign hw2reg.scr_key_rotated.d  = (key_ack & ~local_esc) ? MuBi4True : MuBi4False;
+  assign hw2reg.scr_key_rotated.d = (key_ack & ~local_esc) ? MuBi4True : MuBi4False;
   assign hw2reg.scr_key_rotated.de = key_ack | local_esc;
 
   // Clear this bit on local escalation.
   logic key_seed_valid;
+`ifdef BUGNUMSRAMCON6  // fail 1
+  assign hw2reg.status.scr_key_seed_valid.d  = key_seed_valid & local_esc;
+  assign hw2reg.status.scr_key_seed_valid.de = key_ack | local_esc;
+
+`else
   assign hw2reg.status.scr_key_seed_valid.d  = key_seed_valid & ~local_esc;
   assign hw2reg.status.scr_key_seed_valid.de = key_ack | local_esc;
+`endif
 
   always_ff @(posedge clk_i or negedge rst_ni) begin : p_regs
     if (!rst_ni) begin
+`ifdef BUGNUMSRAMCON16
+      key_req_pending_q <= 1'b1;
+`elsif BUGNUMSRAMCON10T
+      //not assign key_req_pending_q
+`else
       key_req_pending_q <= 1'b0;
+`endif
       // reset case does not use buffered values as the
       // reset value will be directly encoded into flop types
-      key_q             <= RndCnstSramKey;
-      nonce_q           <= RndCnstSramNonce;
+`ifdef BUGNUMSRAMCON13  //fail 1
+      // not assign key_q
+      nonce_q <= RndCnstSramNonce;
+`elsif BUGNUMSRAMCON14  // fail 2
+      key_q   <= RndCnstSramNonce;
+      nonce_q <= RndCnstSramKey;
+`else
+      key_q   <= RndCnstSramKey;
+      nonce_q <= RndCnstSramNonce;
+`endif
     end else begin
       key_req_pending_q <= key_req_pending_d;
       if (key_ack) begin
+`ifdef BUGNUMSRAMCON7  // fail 13
+        key_q   <= 1'b0;
+        nonce_q <= nonce_d;
+`elsif BUGNUMSRAMCON8  //fail 13
+        key_q   <= key_d;
+        nonce_q <= ~nonce_d;
+`else
         key_q   <= key_d;
         nonce_q <= nonce_d;
+`endif
       end
       // This scraps the keys.
       // SEC_CM: KEY.GLOBAL_ESC
@@ -322,29 +373,24 @@ module sram_ctrl
   end
 
   prim_sync_reqack_data #(
-    .Width($bits(otp_ctrl_pkg::sram_otp_key_rsp_t)-1),
-    .DataSrc2Dst(1'b0)
+      .Width($bits(otp_ctrl_pkg::sram_otp_key_rsp_t) - 1),
+      .DataSrc2Dst(1'b0)
   ) u_prim_sync_reqack_data (
-    .clk_src_i  ( clk_i              ),
-    .rst_src_ni ( rst_ni             ),
-    .clk_dst_i  ( clk_otp_i          ),
-    .rst_dst_ni ( rst_otp_ni         ),
-    .req_chk_i  ( 1'b1               ),
-    .src_req_i  ( key_req_pending_q  ),
-    .src_ack_o  ( key_ack            ),
-    .dst_req_o  ( sram_otp_key_o.req ),
-    .dst_ack_i  ( sram_otp_key_i.ack ),
-    .data_i     ( {sram_otp_key_i.key,
-                   sram_otp_key_i.nonce,
-                   sram_otp_key_i.seed_valid} ),
-    .data_o     ( {key_d,
-                   nonce_d,
-                   key_seed_valid} )
+      .clk_src_i (clk_i),
+      .rst_src_ni(rst_ni),
+      .clk_dst_i (clk_otp_i),
+      .rst_dst_ni(rst_otp_ni),
+      .req_chk_i (1'b1),
+      .src_req_i (key_req_pending_q),
+      .src_ack_o (key_ack),
+      .dst_req_o (sram_otp_key_o.req),
+      .dst_ack_i (sram_otp_key_i.ack),
+      .data_i    ({sram_otp_key_i.key, sram_otp_key_i.nonce, sram_otp_key_i.seed_valid}),
+      .data_o    ({key_d, nonce_d, key_seed_valid})
   );
 
   logic unused_csr_sigs;
-  assign unused_csr_sigs = ^{reg2hw.status.init_done.q,
-                             reg2hw.status.scr_key_seed_valid.q};
+  assign unused_csr_sigs = ^{reg2hw.status.init_done.q, reg2hw.status.scr_key_seed_valid.q};
 
   ////////////////////
   // SRAM Execution //
@@ -354,41 +400,54 @@ module sram_ctrl
   if (InstrExec) begin : gen_instr_ctrl
     lc_tx_t lc_hw_debug_en;
     prim_lc_sync #(
-      .NumCopies (1)
+        .NumCopies(1)
     ) u_prim_lc_sync_hw_debug_en (
-      .clk_i,
-      .rst_ni,
-      .lc_en_i (lc_hw_debug_en_i),
-      .lc_en_o ({lc_hw_debug_en})
+        .clk_i,
+        .rst_ni,
+        .lc_en_i(lc_hw_debug_en_i),
+        .lc_en_o({lc_hw_debug_en})
     );
 
     mubi8_t otp_en_sram_ifetch;
     prim_mubi8_sync #(
-      .NumCopies (1)
+        .NumCopies(1)
     ) u_prim_mubi8_sync_otp_en_sram_ifetch (
-      .clk_i,
-      .rst_ni,
-      .mubi_i(otp_en_sram_ifetch_i),
-      .mubi_o({otp_en_sram_ifetch})
+        .clk_i,
+        .rst_ni,
+        .mubi_i(otp_en_sram_ifetch_i),
+        .mubi_o({otp_en_sram_ifetch})
     );
 
     mubi4_t lc_ifetch_en;
     mubi4_t reg_ifetch_en;
     // SEC_CM: INSTR.BUS.LC_GATED
+`ifdef BUGNUMSRAMCON8T  //fail 2
+    //not assign lc_ifetch_en
+`else
     assign lc_ifetch_en = lc_to_mubi4(lc_hw_debug_en);
+`endif
     // SEC_CM: EXEC.CONFIG.MUBI
+
+`ifdef BUGNUMSRAMCON9T  //fail 2
+    //not assign reg_ifetch_en 
+`else
     assign reg_ifetch_en = mubi4_t'(reg2hw.exec.q);
+`endif
     // SEC_CM: EXEC.INTERSIG.MUBI
-    assign en_ifetch = (mubi8_test_true_strict(otp_en_sram_ifetch)) ? reg_ifetch_en :
-                                                                      lc_ifetch_en;
+`ifdef BUGNUMSRAMCON9  // fail 2
+    assign en_ifetch = (mubi8_test_true_strict(otp_en_sram_ifetch)) ? lc_ifetch_en : reg_ifetch_en;
+`elsif BUGNUMSRAMCON5T  // fail 2
+    //not assign en_ifetch
+`else
+    assign en_ifetch = (mubi8_test_true_strict(otp_en_sram_ifetch)) ? reg_ifetch_en : lc_ifetch_en;
+
+`endif
   end else begin : gen_tieoff
     assign en_ifetch = MuBi4False;
 
     // tie off unused signals
     logic unused_sigs;
-    assign unused_sigs = ^{lc_hw_debug_en_i,
-                           reg2hw.exec.q,
-                           otp_en_sram_ifetch_i};
+    assign unused_sigs = ^{lc_hw_debug_en_i, reg2hw.exec.q, otp_en_sram_ifetch_i};
   end
 
   /////////////////////////
@@ -397,27 +456,27 @@ module sram_ctrl
 
   logic [LfsrWidth-1:0] lfsr_out;
   prim_lfsr #(
-    .LfsrDw      ( LfsrWidth       ),
-    .EntropyDw   ( LfsrWidth       ),
-    .StateOutDw  ( LfsrWidth       ),
-    .DefaultSeed ( RndCnstLfsrSeed ),
-    .StatePermEn ( 1'b1            ),
-    .StatePerm   ( RndCnstLfsrPerm )
+      .LfsrDw     (LfsrWidth),
+      .EntropyDw  (LfsrWidth),
+      .StateOutDw (LfsrWidth),
+      .DefaultSeed(RndCnstLfsrSeed),
+      .StatePermEn(1'b1),
+      .StatePerm  (RndCnstLfsrPerm)
   ) u_lfsr (
-    .clk_i,
-    .rst_ni,
-    .lfsr_en_i(init_req),
-    .seed_en_i(init_trig),
-    .seed_i(nonce_q[NonceWidth +: LfsrWidth]),
-    .entropy_i('0),
-    .state_o(lfsr_out)
+      .clk_i,
+      .rst_ni,
+      .lfsr_en_i(init_req),
+      .seed_en_i(init_trig),
+      .seed_i(nonce_q[NonceWidth+:LfsrWidth]),
+      .entropy_i('0),
+      .state_o(lfsr_out)
   );
 
   // Compute the correct integrity alongside for the pseudo-random initialization values.
-  logic [DataWidth - 1 :0] lfsr_out_integ;
+  logic [DataWidth - 1 : 0] lfsr_out_integ;
   tlul_data_integ_enc u_tlul_data_integ_enc (
-    .data_i(lfsr_out),
-    .data_intg_o(lfsr_out_integ)
+      .data_i(lfsr_out),
+      .data_intg_o(lfsr_out_integ)
   );
 
   ////////////////////////////
@@ -430,19 +489,19 @@ module sram_ctrl
 
   // SEC_CM: RAM_TL_LC_GATE.FSM.SPARSE
   tlul_lc_gate #(
-    .NumGatesPerDirection(2)
+      .NumGatesPerDirection(2)
   ) u_tlul_lc_gate (
-    .clk_i,
-    .rst_ni,
-    .tl_h2d_i(ram_tl_i),
-    .tl_d2h_o(ram_tl_o),
-    .tl_h2d_o(ram_tl_in_gated),
-    .tl_d2h_i(ram_tl_out_gated),
-    .flush_req_i('0),
-    .flush_ack_o(),
-    .resp_pending_o(tl_gate_resp_pending),
-    .lc_en_i (lc_tlul_gate_en),
-    .err_o   (bus_integ_error[2])
+      .clk_i,
+      .rst_ni,
+      .tl_h2d_i(ram_tl_i),
+      .tl_d2h_o(ram_tl_o),
+      .tl_h2d_o(ram_tl_in_gated),
+      .tl_d2h_i(ram_tl_out_gated),
+      .flush_req_i('0),
+      .flush_ack_o(),
+      .resp_pending_o(tl_gate_resp_pending),
+      .lc_en_i (lc_tlul_gate_en),
+      .err_o   (bus_integ_error[2])
   );
 
   /////////////////////////////////
@@ -456,9 +515,9 @@ module sram_ctrl
   logic sram_intg_error, sram_req, sram_gnt, sram_we, sram_rvalid;
   logic [AddrWidth-1:0] sram_addr;
   logic [DataWidth-1:0] sram_wdata, sram_wmask, sram_rdata;
-  logic                 sram_wpending, sram_wr_collision;
+  logic sram_wpending, sram_wr_collision;
 
-  logic sram_compound_txn_in_progress;
+  logic   sram_compound_txn_in_progress;
 
 
   // // SEC_CM: MEM.READBACK
@@ -466,56 +525,95 @@ module sram_ctrl
   assign reg_readback_en = mubi4_t'(reg2hw.readback.q);
 
   tlul_adapter_sram #(
-    .SramAw(AddrWidth),
-    .SramDw(DataWidth - tlul_pkg::DataIntgWidth),
-    .Outstanding(2),
-    .ByteAccess(1),
-    .CmdIntgCheck(1),
-    .EnableRspIntgGen(1),
-    .EnableDataIntgGen(0),
-    .EnableDataIntgPt(1), // SEC_CM: MEM.INTEGRITY
-    .SecFifoPtr      (1), // SEC_CM: TLUL_FIFO.CTR.REDUN
-    .EnableReadback  (1)  // SEC_CM: MEM.READBACK
+      .SramAw           (AddrWidth),
+      .SramDw           (DataWidth - tlul_pkg::DataIntgWidth),
+      .Outstanding      (2),
+      .ByteAccess       (1),
+      .CmdIntgCheck     (1),
+      .EnableRspIntgGen (1),
+      .EnableDataIntgGen(0),
+      .EnableDataIntgPt (1),                                    // SEC_CM: MEM.INTEGRITY
+      .SecFifoPtr       (1),                                    // SEC_CM: TLUL_FIFO.CTR.REDUN
+      .EnableReadback   (1)                                     // SEC_CM: MEM.READBACK
   ) u_tlul_adapter_sram (
-    .clk_i,
-    .rst_ni,
-    .tl_i                       (ram_tl_in_gated),
-    .tl_o                       (ram_tl_out_gated),
-    .en_ifetch_i                (en_ifetch),
-    .req_o                      (tlul_req),
-    .req_type_o                 (),
-    .gnt_i                      (tlul_gnt),
-    .we_o                       (tlul_we),
-    .addr_o                     (tlul_addr),
-    .wdata_o                    (tlul_wdata),
-    .wmask_o                    (tlul_wmask),
-    // SEC_CM: BUS.INTEGRITY
-    .intg_error_o               (bus_integ_error[1]),
-    .rdata_i                    (sram_rdata),
-    .rvalid_i                   (sram_rvalid),
-    .rerror_i                   ('0),
-    .compound_txn_in_progress_o (sram_compound_txn_in_progress),
-    .readback_en_i              (reg_readback_en),
-    .readback_error_o           (readback_error),
-    .wr_collision_i             (sram_wr_collision),
-    .write_pending_i            (sram_wpending)
+      .clk_i,
+      .rst_ni,
+      .tl_i                      (ram_tl_in_gated),
+      .tl_o                      (ram_tl_out_gated),
+      .en_ifetch_i               (en_ifetch),
+      .req_o                     (tlul_req),
+      .req_type_o                (),
+      .gnt_i                     (tlul_gnt),
+      .we_o                      (tlul_we),
+      .addr_o                    (tlul_addr),
+      .wdata_o                   (tlul_wdata),
+      .wmask_o                   (tlul_wmask),
+      // SEC_CM: BUS.INTEGRITY
+      .intg_error_o              (bus_integ_error[1]),
+      .rdata_i                   (sram_rdata),
+      .rvalid_i                  (sram_rvalid),
+      .rerror_i                  ('0),
+      .compound_txn_in_progress_o(sram_compound_txn_in_progress),
+      .readback_en_i             (reg_readback_en),
+      .readback_error_o          (readback_error),
+      .wr_collision_i            (sram_wr_collision),
+      .write_pending_i           (sram_wpending)
   );
 
   logic key_valid;
 
   // Interposing mux logic for initialization with pseudo random data.
-  assign sram_req        = tlul_req | init_req;
+  assign sram_req = tlul_req | init_req;
   // This grant signal acts more like a ready internally in tlul_adapter_sram. In particular it's
   // fine to assert it when tlul_req is low (it has no effect). So here tlul_gnt is asserted when
   // a request from tlul_req will be granted regardless of whether a request exists. This is done
   // for timing reasons so that the output TL ready isn't combinatorially connected to the incoming
   // TL valid. In particular we must not use `sram_gnt` in the expression to avoid this.
-  assign tlul_gnt        = key_valid & ~init_req;
-  assign sram_we         = tlul_we | init_req;
+`ifdef BUGNUMSRAMCON10
+  assign tlul_gnt = key_valid & init_req;
+  assign sram_we = tlul_we | init_req;
   assign sram_intg_error = |bus_integ_error[2:1] & ~init_req;
-  assign sram_addr       = (init_req) ? init_cnt          : tlul_addr;
-  assign sram_wdata      = (init_req) ? lfsr_out_integ    : tlul_wdata;
-  assign sram_wmask      = (init_req) ? {DataWidth{1'b1}} : tlul_wmask;
+  assign sram_addr = (init_req) ? init_cnt : tlul_addr;
+  assign sram_wdata = (init_req) ? lfsr_out_integ : tlul_wdata;
+  assign sram_wmask = (init_req) ? {DataWidth{1'b1}} : tlul_wmask;
+`elsif BUGNUMSRAMCON12
+  assign tlul_gnt = key_valid & ~init_req;
+  assign sram_we = tlul_we & init_req;
+  assign sram_intg_error = |bus_integ_error[2:1] & ~init_req;
+  assign sram_addr = (init_req) ? init_cnt : tlul_addr;
+  assign sram_wdata = (init_req) ? lfsr_out_integ : tlul_wdata;
+  assign sram_wmask = (init_req) ? {DataWidth{1'b1}} : tlul_wmask;
+`elsif BUGNUMSRAMCON1T
+  assign tlul_gnt = key_valid & ~init_req;
+  assign sram_we = tlul_we | init_req;
+  // sram integer not set
+  assign sram_addr = (init_req) ? init_cnt : tlul_addr;
+  assign sram_wdata = (init_req) ? lfsr_out_integ : tlul_wdata;
+  assign sram_wmask = (init_req) ? {DataWidth{1'b1}} : tlul_wmask;
+`elsif BUGNUMSRAMCON2T
+  assign tlul_gnt = key_valid & ~init_req;
+  assign sram_we = tlul_we | init_req;
+  assign sram_intg_error = |bus_integ_error[2:1] & ~init_req;
+  assign sram_addr = (init_req) ? init_cnt : tlul_addr;
+  assign sram_wdata = sram_addr;
+  assign sram_wmask = (init_req) ? {DataWidth{1'b1}} : tlul_wmask;
+`elsif BUGNUMSRAMCON4T
+
+  assign tlul_gnt = key_valid & ~init_req;
+  assign sram_we = tlul_we | init_req;
+  assign sram_intg_error = |bus_integ_error[2:1] & ~init_req;
+  assign sram_addr = (init_req) ? init_cnt : tlul_addr;
+  assign sram_wdata = (init_req) ? lfsr_out_integ : tlul_wdata;
+  assign sram_wmask = (init_req) ? tlul_wmask : {DataWidth{1'b1}};
+
+`else
+  assign tlul_gnt = key_valid & ~init_req;
+  assign sram_we = tlul_we | init_req;
+  assign sram_intg_error = |bus_integ_error[2:1] & ~init_req;
+  assign sram_addr = (init_req) ? init_cnt : tlul_addr;
+  assign sram_wdata = (init_req) ? lfsr_out_integ : tlul_wdata;
+  assign sram_wmask = (init_req) ? {DataWidth{1'b1}} : tlul_wmask;
+`endif
 
   // The SRAM scrambling wrapper will not accept any transactions while the
   // key req is pending or if we have escalated. Note that we're not using
@@ -532,33 +630,33 @@ module sram_ctrl
 
   // SEC_CM: MEM.SCRAMBLE, ADDR.SCRAMBLE
   prim_ram_1p_scr #(
-    .Width(DataWidth),
-    .Depth(Depth),
-    .EnableParity(0),
-    .DataBitsPerMask(DataWidth)
+      .Width(DataWidth),
+      .Depth(Depth),
+      .EnableParity(0),
+      .DataBitsPerMask(DataWidth)
   ) u_prim_ram_1p_scr (
-    .clk_i,
-    .rst_ni,
+      .clk_i,
+      .rst_ni,
 
-    .key_valid_i      (key_valid),
-    .key_i            (key_q),
-    .nonce_i          (nonce_q[NonceWidth-1:0]),
+      .key_valid_i(key_valid),
+      .key_i      (key_q),
+      .nonce_i    (nonce_q[NonceWidth-1:0]),
 
-    .req_i            (sram_req),
-    .intg_error_i     (sram_intg_error),
-    .gnt_o            (sram_gnt),
-    .write_i          (sram_we),
-    .addr_i           (sram_addr),
-    .wdata_i          (sram_wdata),
-    .wmask_i          (sram_wmask),
-    .rdata_o          (sram_rdata),
-    .rvalid_o         (sram_rvalid),
-    .rerror_o         ( ),
-    .raddr_o          ( ),
-    .cfg_i,
-    .wr_collision_o   (sram_wr_collision),
-    .write_pending_o  (sram_wpending),
-    .alert_o          (sram_alert)
+      .req_i          (sram_req),
+      .intg_error_i   (sram_intg_error),
+      .gnt_o          (sram_gnt),
+      .write_i        (sram_we),
+      .addr_i         (sram_addr),
+      .wdata_i        (sram_wdata),
+      .wmask_i        (sram_wmask),
+      .rdata_o        (sram_rdata),
+      .rvalid_o       (sram_rvalid),
+      .rerror_o       (),
+      .raddr_o        (),
+      .cfg_i,
+      .wr_collision_o (sram_wr_collision),
+      .write_pending_o(sram_wpending),
+      .alert_o        (sram_alert)
   );
 
   logic unused_sram_gnt;
@@ -570,33 +668,33 @@ module sram_ctrl
   // Assertions //
   ////////////////
 
-  `ASSERT_KNOWN(RegsTlOutKnown_A,  regs_tl_o)
-  `ASSERT_KNOWN(RamTlOutKnown_A,   ram_tl_o.d_valid)
+  `ASSERT_KNOWN(RegsTlOutKnown_A, regs_tl_o)
+  `ASSERT_KNOWN(RamTlOutKnown_A, ram_tl_o.d_valid)
   `ASSERT_KNOWN_IF(RamTlOutPayLoadKnown_A, ram_tl_o, ram_tl_o.d_valid)
-  `ASSERT_KNOWN(AlertOutKnown_A,   alert_tx_o)
+  `ASSERT_KNOWN(AlertOutKnown_A, alert_tx_o)
   `ASSERT_KNOWN(SramOtpKeyKnown_A, sram_otp_key_o)
 
   // Alert assertions for redundant counters.
-  `ASSERT_PRIM_COUNT_ERROR_TRIGGER_ALERT(CntCheck_A,
-      u_prim_count, alert_tx_o[0])
-  `ASSERT_PRIM_FSM_ERROR_TRIGGER_ALERT(LcGateFsmCheck_A,
-      u_tlul_lc_gate.u_state_regs, alert_tx_o[0])
+  `ASSERT_PRIM_COUNT_ERROR_TRIGGER_ALERT(CntCheck_A, u_prim_count, alert_tx_o[0])
+  `ASSERT_PRIM_FSM_ERROR_TRIGGER_ALERT(LcGateFsmCheck_A, u_tlul_lc_gate.u_state_regs, alert_tx_o[0])
 
   // Alert assertions for reg_we onehot check.
-  `ASSERT_PRIM_REG_WE_ONEHOT_ERROR_TRIGGER_ALERT(RegWeOnehotCheck_A,
-      u_reg_regs, alert_tx_o[0])
+  `ASSERT_PRIM_REG_WE_ONEHOT_ERROR_TRIGGER_ALERT(RegWeOnehotCheck_A, u_reg_regs, alert_tx_o[0])
 
   // Alert assertions for redundant counters.
-  `ASSERT_PRIM_COUNT_ERROR_TRIGGER_ALERT(FifoWptrCheck_A,
+  `ASSERT_PRIM_COUNT_ERROR_TRIGGER_ALERT(
+      FifoWptrCheck_A,
       u_tlul_adapter_sram.u_rspfifo.gen_normal_fifo.u_fifo_cnt.gen_secure_ptrs.u_wptr,
       alert_tx_o[0])
-  `ASSERT_PRIM_COUNT_ERROR_TRIGGER_ALERT(FifoRptrCheck_A,
+  `ASSERT_PRIM_COUNT_ERROR_TRIGGER_ALERT(
+      FifoRptrCheck_A,
       u_tlul_adapter_sram.u_rspfifo.gen_normal_fifo.u_fifo_cnt.gen_secure_ptrs.u_rptr,
       alert_tx_o[0])
 
   // Alert assertions for sparse FSM.
-  `ASSERT_PRIM_FSM_ERROR_TRIGGER_ALERT(TlSramByteFsm_A,
-      u_tlul_adapter_sram.u_sram_byte.gen_integ_handling.u_state_regs, alert_tx_o[0])
+  `ASSERT_PRIM_FSM_ERROR_TRIGGER_ALERT(
+      TlSramByteFsm_A, u_tlul_adapter_sram.u_sram_byte.gen_integ_handling.u_state_regs,
+      alert_tx_o[0])
 
   // `tlul_gnt` doesn't factor in `sram_gnt` for timing reasons. This assertions checks that
   // `tlul_gnt` is the same as `sram_gnt` when there's an active `tlul_req` that isn't being ignored
