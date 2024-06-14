@@ -7,27 +7,27 @@
 #SBATCH --qos=olympus-cpu-research             # Change to ugrad for undergrads
 #SBATCH --partition=cpu-research               # This job does not use a GPU
 
-cd ${RESEARCH_DIR}/github/designs/opentitan_1
+cd ${RESEARCH_DIR}/github/designs/opentitan
 source env_setup.bash
 
 # Current bug type
-BUGTYPE="CTRFSM"
-BEGIN_TRAIN=5
-END_TRAIN=6
-BEGIN_TEST=4
-END_TEST=4
+BUGTYPE="SRAMCON"
+BEGIN_TRAIN=0
+END_TRAIN=16
+BEGIN_TEST=0
+END_TEST=10
 # Keep track of the number of bugs injected
 BUGINJECTED=""
 for i in $(seq $BEGIN_TRAIN $END_TRAIN)
 do
     echo "Injecting bug BUGNUM${BUGTYPE}${i}"
-    util/dvsim/dvsim.py hw/ip/aes/dv/aes_base_sim_cfg.hjson -i all --fixed-seed=1 --build-modes aes_masked --verbose debug --build-opts +define+BUGNUM${BUGTYPE}${i}
+     util/dvsim/dvsim.py hw/ip/sram_ctrl/dv/sram_ctrl_main_sim_cfg.hjson -i all --reseed 1 --verbose debug --build-opts +define+BUGNUM${BUGTYPE}${i}
     BUGINJECTED="$BUGINJECTED ${BUGTYPE}${i}"
 done 
 for i in $(seq $BEGIN_TEST $END_TEST)
 do
     echo "Injecting bug BUGNUM${BUGTYPE}${i}T"
-    util/dvsim/dvsim.py hw/ip/aes/dv/aes_base_sim_cfg.hjson -i all --fixed-seed=1 --build-modes aes_masked --verbose debug --build-opts +define+BUGNUM${BUGTYPE}${i}T
+    util/dvsim/dvsim.py hw/ip/sram_ctrl/dv/sram_ctrl_main_sim_cfg.hjson -i all --reseed 1 --verbose debug --build-opts +define+BUGNUM${BUGTYPE}${i}T
     BUGINJECTED="$BUGINJECTED ${BUGTYPE}${i}T"
 done 
 
