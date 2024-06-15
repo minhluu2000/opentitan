@@ -1,5 +1,5 @@
 #!/bin/bash -l
-#SBATCH --job-name=titan_1                     # Job name
+#SBATCH --job-name=titan_3                     # Job name
 #SBATCH --ntasks=1                             # Number of tasks
 #SBATCH --cpus-per-task=4                      # Number of CPU
 #SBATCH --time=24:00:00                        # Time limit hh:mm:ss
@@ -7,27 +7,28 @@
 #SBATCH --qos=olympus-cpu-research             # Change to ugrad for undergrads
 #SBATCH --partition=cpu-research               # This job does not use a GPU
 
-cd ${RESEARCH_DIR}/github/designs/opentitan
+cd ${RESEARCH_DIR}/github/designs/opentitan_3
 source env_setup.bash
 
 # Current bug type
-BUGTYPE="SRAMCON"
-BEGIN_TRAIN=0
-END_TRAIN=16
-BEGIN_TEST=0
-END_TEST=10
+BUGTYPE="SBOXDOMINDEPMUL"
+COMMAND="util/dvsim/dvsim.py hw/ip/aes/dv/aes_base_sim_cfg.hjson -i all --fixed-seed=1 --build-modes aes_masked"
+BEGIN_TRAIN=1
+END_TRAIN=4
+BEGIN_TEST=1
+END_TEST=3
 # Keep track of the number of bugs injected
 BUGINJECTED=""
 for i in $(seq $BEGIN_TRAIN $END_TRAIN)
 do
     echo "Injecting bug BUGNUM${BUGTYPE}${i}"
-     util/dvsim/dvsim.py hw/ip/sram_ctrl/dv/sram_ctrl_main_sim_cfg.hjson -i all --reseed 1 --verbose debug --build-opts +define+BUGNUM${BUGTYPE}${i}
+    $COMMAND --build-opts +define+BUGNUM${BUGTYPE}${i}
     BUGINJECTED="$BUGINJECTED ${BUGTYPE}${i}"
 done 
 for i in $(seq $BEGIN_TEST $END_TEST)
 do
     echo "Injecting bug BUGNUM${BUGTYPE}${i}T"
-    util/dvsim/dvsim.py hw/ip/sram_ctrl/dv/sram_ctrl_main_sim_cfg.hjson -i all --reseed 1 --verbose debug --build-opts +define+BUGNUM${BUGTYPE}${i}T
+    $COMMAND --build-opts +define+BUGNUM${BUGTYPE}${i}T
     BUGINJECTED="$BUGINJECTED ${BUGTYPE}${i}T"
 done 
 
