@@ -133,13 +133,13 @@ module aes_cipher_control_fsm
     key_words_sel_o      = KEY_WORDS_ZERO;
     round_key_sel_o      = ROUND_KEY_DIRECT;
 `elsif BUGNUMAESCICONFSM2
-    key_full_sel_o       = ~KEY_FULL_ROUND;
-    key_full_we_o        = 1'b0;
-    key_dec_sel_o        = ~KEY_DEC_EXPAND;
+    key_full_sel_o       = KEY_FULL_ROUND;
+    key_full_we_o        = 1'b1;
+    key_dec_sel_o        = KEY_DEC_EXPAND;
     key_dec_we_o         = 1'b0;
     key_expand_en_o      = 1'b0;
     key_expand_out_ack_o = 1'b0;
-    key_expand_clear_o   = 1'b0;
+    key_expand_clear_o   = 1'b1;
     key_words_sel_o      = KEY_WORDS_ZERO;
     round_key_sel_o      = ROUND_KEY_DIRECT;
 `elsif BUGNUMAESCICONFSM1T
@@ -165,6 +165,52 @@ module aes_cipher_control_fsm
 `endif
 
     // FSM
+`ifdef BUGNUMAESCICONFSM3
+    // aes_cipher_ctrl_ns = aes_cipher_ctrl_cs;
+    // num_rounds_d       = num_rounds_q;
+    rnd_ctr_d          = rnd_ctr_q;
+    crypt_d_o          = crypt_q_i;
+    dec_key_gen_d_o    = dec_key_gen_q_i;
+    prng_reseed_d_o    = prng_reseed_q_i;
+    key_clear_d_o      = key_clear_q_i;
+    data_out_clear_d_o = data_out_clear_q_i;
+    prng_reseed_done_d = prng_reseed_done_q | prng_reseed_ack_i;
+    advance            = 1'b0;
+    cyc_ctr_d          = (SecSBoxImpl == SBoxImplDom) ? cyc_ctr_q + 3'd1 : 3'd0;
+
+    // Alert
+    alert_o            = 1'b0;
+`elsif BUGNUMAESCICONFSM4
+    aes_cipher_ctrl_ns = aes_cipher_ctrl_cs;
+    num_rounds_d       = num_rounds_q;
+    // rnd_ctr_d          = rnd_ctr_q;
+    // crypt_d_o          = crypt_q_i;
+    dec_key_gen_d_o    = dec_key_gen_q_i;
+    prng_reseed_d_o    = prng_reseed_q_i;
+    key_clear_d_o      = key_clear_q_i;
+    data_out_clear_d_o = data_out_clear_q_i;
+    prng_reseed_done_d = prng_reseed_done_q | prng_reseed_ack_i;
+    advance            = 1'b0;
+    cyc_ctr_d          = (SecSBoxImpl == SBoxImplDom) ? cyc_ctr_q + 3'd1 : 3'd0;
+
+    // Alert
+    alert_o            = 1'b0;
+`elsif BUGNUMAESCICONFSM2T
+    aes_cipher_ctrl_ns = aes_cipher_ctrl_cs;
+    num_rounds_d       = num_rounds_q;
+    rnd_ctr_d          = rnd_ctr_q;
+    crypt_d_o          = crypt_q_i;
+    dec_key_gen_d_o    = dec_key_gen_q_i;
+    prng_reseed_d_o    = prng_reseed_q_i;
+    key_clear_d_o      = key_clear_q_i;
+    data_out_clear_d_o = data_out_clear_q_i;
+    // prng_reseed_done_d = prng_reseed_done_q | prng_reseed_ack_i;
+    // advance            = 1'b0;
+    cyc_ctr_d          = (SecSBoxImpl == SBoxImplDom) ? cyc_ctr_q + 3'd1 : 3'd0;
+
+    // Alert
+    alert_o            = 1'b0;
+`else
     aes_cipher_ctrl_ns = aes_cipher_ctrl_cs;
     num_rounds_d       = num_rounds_q;
     rnd_ctr_d          = rnd_ctr_q;
@@ -179,6 +225,7 @@ module aes_cipher_control_fsm
 
     // Alert
     alert_o            = 1'b0;
+`endif
 
     unique case (aes_cipher_ctrl_cs)
 
@@ -191,21 +238,61 @@ module aes_cipher_control_fsm
           if (SecMasking && prng_reseed_i && !dec_key_gen_i && !crypt_i) begin
             // Reseed the masking PRNG without starting encryption/decryption or generation of the
             // start key for decryption.
+`ifdef BUGNUMAESCICONFSM5
+            prng_reseed_d_o    = 1'b0;
+            prng_reseed_done_d = 1'b1;
+            aes_cipher_ctrl_ns = CIPHER_CTRL_PRNG_RESEED;
+`else
             prng_reseed_d_o    = 1'b1;
             prng_reseed_done_d = 1'b0;
             aes_cipher_ctrl_ns = CIPHER_CTRL_PRNG_RESEED;
-
+`endif
           end else if (key_clear_i || data_out_clear_i) begin
             // Clear internal key registers. The cipher core muxes are used to clear the data
             // output registers.
+`ifdef BUGNUMAESCICONFSM3T
+            // key_clear_d_o      = key_clear_i;
+            data_out_clear_d_o = data_out_clear_i;
+
+            // To clear the data output registers, we must first clear the state.
+            aes_cipher_ctrl_ns = data_out_clear_i ? CIPHER_CTRL_CLEAR_S : CIPHER_CTRL_CLEAR_KD;
+`elsif BUGNUMAESCICONFSM4T
+            key_clear_d_o      = key_clear_i;
+            // data_out_clear_d_o = data_out_clear_i;
+
+            // To clear the data output registers, we must first clear the state.
+            aes_cipher_ctrl_ns = data_out_clear_i ? CIPHER_CTRL_CLEAR_S : CIPHER_CTRL_CLEAR_S;
+`else
             key_clear_d_o      = key_clear_i;
             data_out_clear_d_o = data_out_clear_i;
 
             // To clear the data output registers, we must first clear the state.
             aes_cipher_ctrl_ns = data_out_clear_i ? CIPHER_CTRL_CLEAR_S : CIPHER_CTRL_CLEAR_KD;
+`endif
 
           end else if (dec_key_gen_i || crypt_i) begin
             // Start encryption/decryption or generation of start key for decryption.
+`ifdef BUGNUMAESCICONFSM6
+            crypt_d_o = ~dec_key_gen_i & crypt_i;
+            dec_key_gen_d_o = dec_key_gen_i;
+
+            // Latch whether we shall reseed the masking PRNG.
+            prng_reseed_d_o = SecMasking & prng_reseed_i;
+
+            // Load input data to state
+            state_sel_o = dec_key_gen_i ? STATE_CLEAR : STATE_CLEAR;
+            state_we_o = 1'b0;
+`elsif BUGNUMAESCICONFSM7
+            crypt_d_o = ~dec_key_gen_i & crypt_i;
+            dec_key_gen_d_o = dec_key_gen_i;
+
+            // Latch whether we shall reseed the masking PRNG.
+            prng_reseed_d_o = SecMasking & prng_reseed_i;
+
+            // Load input data to state
+            state_sel_o = dec_key_gen_i ? STATE_CLEAR : STATE_CLEAR;
+            state_we_o = 1'b0;
+`else
             crypt_d_o = ~dec_key_gen_i & crypt_i;
             dec_key_gen_d_o = dec_key_gen_i;
 
@@ -215,9 +302,28 @@ module aes_cipher_control_fsm
             // Load input data to state
             state_sel_o = dec_key_gen_i ? STATE_CLEAR : STATE_INIT;
             state_we_o = 1'b1;
+`endif
 
             // Make the masking PRNG advance. The current pseudo-random data is used to mask the
             // input data.
+`ifdef BUGNUMAESCICONFSM8
+            prng_update_o = SecMasking;
+
+            // Init key expand
+            // key_expand_clear_o = 1'b1;
+
+            // Load full key
+            key_full_sel_o = dec_key_gen_i ? KEY_FULL_ENC_INIT :
+                        (op_i == CIPH_FWD) ? KEY_FULL_ENC_INIT :
+                        (op_i == CIPH_INV) ? KEY_FULL_ENC_INIT :
+                                             KEY_FULL_ENC_INIT;
+            key_full_we_o = 1'b0;
+
+            // Load num_rounds, initialize round counter.
+            num_rounds_d = (key_len_i == AES_128) ? 4'd10 : (key_len_i == AES_192) ? 4'd12 : 4'd14;
+            rnd_ctr_d = '0;
+            aes_cipher_ctrl_ns = CIPHER_CTRL_INIT;
+`else
             prng_update_o = SecMasking;
 
             // Init key expand
@@ -234,6 +340,7 @@ module aes_cipher_control_fsm
             num_rounds_d = (key_len_i == AES_128) ? 4'd10 : (key_len_i == AES_192) ? 4'd12 : 4'd14;
             rnd_ctr_d = '0;
             aes_cipher_ctrl_ns = CIPHER_CTRL_INIT;
+`endif
 
           end else begin
             // Handshake without a valid command. We should never get here. If we do (e.g. via a
@@ -244,6 +351,35 @@ module aes_cipher_control_fsm
       end
 
       CIPHER_CTRL_INIT: begin
+`ifdef BUGNUMAESCICONFSM9
+        // Initial round: just add key to state
+        add_rk_sel_o = ADD_RK_INIT;
+
+        // Select key words for initial add_round_key
+        key_words_sel_o = (dec_key_gen_q_i)            ? KEY_WORDS_ZERO :
+            (key_len_i == AES_128)                     ? KEY_WORDS_ZERO :
+            (key_len_i == AES_192 && op_i == CIPH_FWD) ? KEY_WORDS_ZERO :
+            (key_len_i == AES_192 && op_i == CIPH_INV) ? KEY_WORDS_ZERO :
+            (key_len_i == AES_256 && op_i == CIPH_FWD) ? KEY_WORDS_ZERO :
+            (key_len_i == AES_256 && op_i == CIPH_INV) ? KEY_WORDS_ZERO : KEY_WORDS_ZERO;
+
+        // Clear masking PRNG reseed status.
+        prng_reseed_done_d = 1'b0;
+`elsif BUGNUMAESCICONFSM10
+        // Initial round: just add key to state
+        add_rk_sel_o = ADD_RK_INIT;
+
+        // Select key words for initial add_round_key
+        key_words_sel_o = (dec_key_gen_q_i)            ? KEY_WORDS_0123 :
+            (key_len_i == AES_128)                     ? KEY_WORDS_0123 :
+            (key_len_i == AES_192 && op_i == CIPH_FWD) ? KEY_WORDS_0123 :
+            (key_len_i == AES_192 && op_i == CIPH_INV) ? KEY_WORDS_0123 :
+            (key_len_i == AES_256 && op_i == CIPH_FWD) ? KEY_WORDS_0123 :
+            (key_len_i == AES_256 && op_i == CIPH_INV) ? KEY_WORDS_0123 : KEY_WORDS_ZERO;
+
+        // Clear masking PRNG reseed status.
+        prng_reseed_done_d = 1'b0;
+`else
         // Initial round: just add key to state
         add_rk_sel_o = ADD_RK_INIT;
 
@@ -257,9 +393,36 @@ module aes_cipher_control_fsm
 
         // Clear masking PRNG reseed status.
         prng_reseed_done_d = 1'b0;
+`endif
 
         // AES-256 has two round keys available right from beginning. Pseudo-random data is
         // required by KeyExpand only.
+`ifdef BUGNUMAESCICONFSM5T
+        if (key_len_i != AES_256) begin
+          // Advance in sync with KeyExpand. Based on the S-Box implementation, it can take
+          // multiple cycles to finish. Wait for handshake. The DOM S-Boxes consume fresh PRD
+          // only in the first clock cycle and that PRD is taken from the buffer stage updated
+          // based on key_full_we_o. The PRNG itself is updated in every clock cycle to increase
+          // the noise.
+          advance         = key_expand_out_req_i | cyc_ctr_expr;
+          prng_update_o   = SecMasking;
+          key_expand_en_o = 1'b0;
+          if (advance) begin
+            key_expand_out_ack_o = 1'b1;
+            state_we_o           = ~dec_key_gen_q_i;
+            key_full_we_o        = 1'b1;
+            rnd_ctr_d            = rnd_ctr_q + 4'b0001;
+            cyc_ctr_d            = 3'd0;
+            aes_cipher_ctrl_ns   = CIPHER_CTRL_ROUND;
+          end
+        end else begin
+          prng_update_o      = SecMasking;
+          state_we_o         = ~dec_key_gen_q_i;
+          rnd_ctr_d          = rnd_ctr_q + 4'b0001;
+          cyc_ctr_d          = 3'd0;
+          aes_cipher_ctrl_ns = CIPHER_CTRL_ROUND;
+        end
+`else
         if (key_len_i != AES_256) begin
           // Advance in sync with KeyExpand. Based on the S-Box implementation, it can take
           // multiple cycles to finish. Wait for handshake. The DOM S-Boxes consume fresh PRD
@@ -284,11 +447,62 @@ module aes_cipher_control_fsm
           cyc_ctr_d          = 3'd0;
           aes_cipher_ctrl_ns = CIPHER_CTRL_ROUND;
         end
+`endif
       end
 
       CIPHER_CTRL_ROUND: begin
         // Normal rounds
+`ifdef BUGNUMAESCICONFSM6T
+        // Select key words for add_round_key
+        key_words_sel_o = (dec_key_gen_q_i)            ? KEY_WORDS_2345 :
+            (key_len_i == AES_128)                     ? KEY_WORDS_2345 :
+            (key_len_i == AES_192 && op_i == CIPH_FWD) ? KEY_WORDS_2345 :
+            (key_len_i == AES_192 && op_i == CIPH_INV) ? KEY_WORDS_0123 :
+            (key_len_i == AES_256 && op_i == CIPH_FWD) ? KEY_WORDS_2345 :
+            (key_len_i == AES_256 && op_i == CIPH_INV) ? KEY_WORDS_0123 : KEY_WORDS_2345;
 
+        // Keep requesting PRNG reseeding until it is acknowledged.
+        prng_reseed_req_o = SecMasking & prng_reseed_q_i & ~prng_reseed_done_q;
+
+        // Select round key: direct or mixed (equivalent inverse cipher)
+        round_key_sel_o = (op_i == CIPH_FWD) ? ROUND_KEY_DIRECT :
+                          (op_i == CIPH_INV) ? ROUND_KEY_MIXED  : ROUND_KEY_DIRECT;
+
+        // Advance in sync with SubBytes and KeyExpand. Based on the S-Box implementation, both can
+        // take multiple cycles to finish. Wait for handshake. The DOM S-Boxes consume fresh PRD
+        // only in the first clock cycle and that PRD is taken from the buffer stages updated
+        // with state_we_o / based on key_full_we_o. The PRNG itself is updated in every clock
+        // cycle to increase the noise.
+        advance = key_expand_out_req_i & cyc_ctr_expr & (dec_key_gen_q_i | sub_bytes_out_req_i);
+        prng_update_o = SecMasking;
+        sub_bytes_en_o = ~dec_key_gen_q_i;
+        key_expand_en_o = 1'b1;
+`elsif BUGNUMAESCICONFSM7T
+        // Select key words for add_round_key
+        key_words_sel_o = (dec_key_gen_q_i)            ? KEY_WORDS_2345 :
+            (key_len_i == AES_128)                     ? KEY_WORDS_2345 :
+            (key_len_i == AES_192 && op_i == CIPH_FWD) ? KEY_WORDS_2345 :
+            (key_len_i == AES_192 && op_i == CIPH_INV) ? KEY_WORDS_0123 :
+            (key_len_i == AES_256 && op_i == CIPH_FWD) ? KEY_WORDS_2345 :
+            (key_len_i == AES_256 && op_i == CIPH_INV) ? KEY_WORDS_0123 : KEY_WORDS_2345;
+
+        // Keep requesting PRNG reseeding until it is acknowledged.
+        prng_reseed_req_o = SecMasking;
+
+        // Select round key: direct or mixed (equivalent inverse cipher)
+        round_key_sel_o = (op_i == CIPH_FWD) ? ROUND_KEY_DIRECT :
+                          (op_i == CIPH_INV) ? ROUND_KEY_DIRECT  : ROUND_KEY_DIRECT;
+
+        // Advance in sync with SubBytes and KeyExpand. Based on the S-Box implementation, both can
+        // take multiple cycles to finish. Wait for handshake. The DOM S-Boxes consume fresh PRD
+        // only in the first clock cycle and that PRD is taken from the buffer stages updated
+        // with state_we_o / based on key_full_we_o. The PRNG itself is updated in every clock
+        // cycle to increase the noise.
+        advance = key_expand_out_req_i & cyc_ctr_expr & (dec_key_gen_q_i | sub_bytes_out_req_i);
+        prng_update_o = SecMasking;
+        sub_bytes_en_o = ~dec_key_gen_q_i;
+        key_expand_en_o = 1'b1;
+`else
         // Select key words for add_round_key
         key_words_sel_o = (dec_key_gen_q_i)            ? KEY_WORDS_ZERO :
             (key_len_i == AES_128)                     ? KEY_WORDS_0123 :
@@ -313,6 +527,107 @@ module aes_cipher_control_fsm
         prng_update_o = SecMasking;
         sub_bytes_en_o = ~dec_key_gen_q_i;
         key_expand_en_o = 1'b1;
+`endif
+`ifdef BUGNUMAESCICONFSM11
+        if (advance) begin
+          sub_bytes_out_ack_o  = ~dec_key_gen_q_i;
+          key_expand_out_ack_o = 1'b0;
+
+          state_we_o           = dec_key_gen_q_i;
+          key_full_we_o        = 1'b0;
+
+          // Update round
+          rnd_ctr_d            = rnd_ctr_q + 4'b0001;
+          cyc_ctr_d            = 3'd0;
+
+          // Are we doing the last regular round?
+          if (rnd_ctr_q >= num_rounds_regular) begin
+            aes_cipher_ctrl_ns = CIPHER_CTRL_FINISH;
+
+            if (dec_key_gen_q_i) begin
+              // Write decryption key.
+              key_dec_we_o = 1'b1;
+
+              // Indicate that we are done, try to perform the handshake. But we don't wait here.
+              // If we don't get the handshake now, we will wait in the finish state. When using
+              // masking, we only finish if the masking PRNG has been reseeded.
+              out_valid_o  = SecMasking ? (prng_reseed_q_i ? prng_reseed_done_q : 1'b1) : 1'b1;
+              if (out_valid_o && out_ready_i) begin
+                // Go to idle state directly.
+                dec_key_gen_d_o    = 1'b0;
+                prng_reseed_d_o    = 1'b0;
+                aes_cipher_ctrl_ns = CIPHER_CTRL_IDLE;
+              end
+            end
+          end  // rnd_ctr_q
+        end  // SubBytes/KeyExpand REQ/ACK
+`elsif BUGNUMAESCICONFSM12
+        if (advance) begin
+          sub_bytes_out_ack_o  = dec_key_gen_q_i;
+          key_expand_out_ack_o = 1'b1;
+
+          state_we_o           = dec_key_gen_q_i;
+          key_full_we_o        = 1'b1;
+
+          // Update round
+          rnd_ctr_d            = rnd_ctr_q + 4'b1111;
+          cyc_ctr_d            = 3'd1;
+
+          // Are we doing the last regular round?
+          if (rnd_ctr_q >= num_rounds_regular) begin
+            aes_cipher_ctrl_ns = CIPHER_CTRL_FINISH;
+
+            if (dec_key_gen_q_i) begin
+              // Write decryption key.
+              key_dec_we_o = 1'b0;
+
+              // Indicate that we are done, try to perform the handshake. But we don't wait here.
+              // If we don't get the handshake now, we will wait in the finish state. When using
+              // masking, we only finish if the masking PRNG has been reseeded.
+              out_valid_o  = SecMasking ? (prng_reseed_q_i ? prng_reseed_done_q : 1'b1) : 1'b0;
+              if (out_valid_o && out_ready_i) begin
+                // Go to idle state directly.
+                dec_key_gen_d_o    = 1'b0;
+                prng_reseed_d_o    = 1'b1;
+                aes_cipher_ctrl_ns = CIPHER_CTRL_IDLE;
+              end
+            end
+          end  // rnd_ctr_q
+        end  // SubBytes/KeyExpand REQ/ACK
+`elsif BUGNUMAESCICONFSM13
+        if (advance) begin
+          sub_bytes_out_ack_o  = ~dec_key_gen_q_i;
+          key_expand_out_ack_o = 1'b1;
+
+          state_we_o           = ~dec_key_gen_q_i;
+          key_full_we_o        = 1'b1;
+
+          // Update round
+          rnd_ctr_d            = rnd_ctr_q + 4'b0001;
+          cyc_ctr_d            = 3'd0;
+
+          // Are we doing the last regular round?
+          if (rnd_ctr_q >= num_rounds_regular) begin
+            aes_cipher_ctrl_ns = CIPHER_CTRL_FINISH;
+
+            if (dec_key_gen_q_i) begin
+              // Write decryption key.
+              key_dec_we_o = 1'b0;
+
+              // Indicate that we are done, try to perform the handshake. But we don't wait here.
+              // If we don't get the handshake now, we will wait in the finish state. When using
+              // masking, we only finish if the masking PRNG has been reseeded.
+              out_valid_o  = SecMasking ? (prng_reseed_q_i ? prng_reseed_done_q : 1'b1) : 1'b0;
+              if (out_valid_o && out_ready_i) begin
+                // Go to idle state directly.
+                dec_key_gen_d_o    = 1'b1;
+                prng_reseed_d_o    = 1'b1;
+                aes_cipher_ctrl_ns = CIPHER_CTRL_IDLE;
+              end
+            end
+          end  // rnd_ctr_q
+        end  // SubBytes/KeyExpand REQ/ACK
+`else
 
         if (advance) begin
           sub_bytes_out_ack_o  = ~dec_key_gen_q_i;
@@ -346,18 +661,30 @@ module aes_cipher_control_fsm
             end
           end  // rnd_ctr_q
         end  // SubBytes/KeyExpand REQ/ACK
+`endif
+
+
       end
 
       CIPHER_CTRL_FINISH: begin
         // Final round
-
+`ifdef BUGNUMAESCICONFSM8T
         // Select key words for add_round_key
         key_words_sel_o = (dec_key_gen_q_i)            ? KEY_WORDS_ZERO :
             (key_len_i == AES_128)                     ? KEY_WORDS_0123 :
             (key_len_i == AES_192 && op_i == CIPH_FWD) ? KEY_WORDS_2345 :
-            (key_len_i == AES_192 && op_i == CIPH_INV) ? KEY_WORDS_0123 :
-            (key_len_i == AES_256 && op_i == CIPH_FWD) ? KEY_WORDS_4567 :
-            (key_len_i == AES_256 && op_i == CIPH_INV) ? KEY_WORDS_0123 : KEY_WORDS_ZERO;
+            (key_len_i == AES_192 && op_i == CIPH_INV) ? KEY_WORDS_2345 :
+            (key_len_i == AES_256 && op_i == CIPH_FWD) ? KEY_WORDS_2345 :
+            (key_len_i == AES_256 && op_i == CIPH_INV) ? KEY_WORDS_0123 : KEY_WORDS_2345;
+`else
+        // Select key words for add_round_key
+        key_words_sel_o = (dec_key_gen_q_i)            ? KEY_WORDS_ZERO :
+        (key_len_i == AES_128)                     ? KEY_WORDS_0123 :
+        (key_len_i == AES_192 && op_i == CIPH_FWD) ? KEY_WORDS_2345 :
+        (key_len_i == AES_192 && op_i == CIPH_INV) ? KEY_WORDS_0123 :
+        (key_len_i == AES_256 && op_i == CIPH_FWD) ? KEY_WORDS_4567 :
+        (key_len_i == AES_256 && op_i == CIPH_INV) ? KEY_WORDS_0123 : KEY_WORDS_ZERO;
+`endif
 
         // Skip mix_columns
         add_rk_sel_o = ADD_RK_FINAL;
@@ -378,6 +705,23 @@ module aes_cipher_control_fsm
         // - all mux selector signals are valid (don't release data in case of errors), and
         // - all sparsely encoded signals are valid (don't release data in case of errors).
         // Perform both handshakes simultaneously.
+`ifdef BUGNUMAESCICONFSM14
+        advance = (sub_bytes_out_req_i | cyc_ctr_expr) | dec_key_gen_q_i;
+        sub_bytes_en_o = dec_key_gen_q_i;
+        out_valid_o    = (mux_sel_err_i && sp_enc_err_i && op_err_i) ? 1'b0         :
+            SecMasking ? (prng_reseed_q_i ? prng_reseed_done_q & advance : advance) : advance;
+
+        // Stop updating the cycle counter once we have valid output.
+        cyc_ctr_d = (SecSBoxImpl == SBoxImplDom) ? (!advance ? cyc_ctr_q + 3'd1 : cyc_ctr_q) : 3'd0;
+`elsif BUGNUMAESCICONFSM15
+        advance = (sub_bytes_out_req_i & cyc_ctr_expr) | dec_key_gen_q_i;
+        sub_bytes_en_o = dec_key_gen_q_i;
+        out_valid_o    = (mux_sel_err_i) ? 1'b0         :
+            SecMasking ? (prng_reseed_q_i ? prng_reseed_done_q | advance : advance) : advance;
+
+        // Stop updating the cycle counter once we have valid output.
+        cyc_ctr_d = (SecSBoxImpl == SBoxImplDom) ? (!advance ? cyc_ctr_q + 3'd1 : cyc_ctr_q) : 3'd0;
+`else
         advance = (sub_bytes_out_req_i & cyc_ctr_expr) | dec_key_gen_q_i;
         sub_bytes_en_o = ~dec_key_gen_q_i;
         out_valid_o    = (mux_sel_err_i || sp_enc_err_i || op_err_i) ? 1'b0         :
@@ -385,6 +729,7 @@ module aes_cipher_control_fsm
 
         // Stop updating the cycle counter once we have valid output.
         cyc_ctr_d = (SecSBoxImpl == SBoxImplDom) ? (!advance ? cyc_ctr_q + 3'd1 : cyc_ctr_q) : 3'd0;
+`endif
 
         // The DOM S-Boxes consume fresh PRD only in the first clock cycle and that PRD is taken
         // from the buffer stages updated with state_we_o / based on key_full_we_o. The PRNG itself
@@ -394,7 +739,35 @@ module aes_cipher_control_fsm
         // very last clock cycle, we update the PRNG again to get ready for the next block.
         prng_update_o =
             ((SecSBoxImpl == SBoxImplDom) ? !advance : 1'b0) | (out_valid_o & out_ready_i);
+`ifdef BUGNUMAESCICONFSM16
+        if (out_valid_o && out_ready_i) begin
+          sub_bytes_out_ack_o = ~dec_key_gen_q_i;
 
+          // Clear the state.
+          state_we_o          = 1'b1;
+          crypt_d_o           = 1'b1;
+          cyc_ctr_d           = 3'd1;
+          // If we were generating the decryption key and didn't get the handshake in the last
+          // regular round, we should clear dec_key_gen now.
+          dec_key_gen_d_o     = 1'b0;
+          prng_reseed_d_o     = 1'b0;
+          aes_cipher_ctrl_ns  = CIPHER_CTRL_IDLE;
+        end
+`elsif BUGNUMAESCICONFSM17
+        if (out_valid_o && out_ready_i) begin
+          sub_bytes_out_ack_o = ~dec_key_gen_q_i;
+
+          // Clear the state.
+          state_we_o          = 1'b0;
+          crypt_d_o           = 1'b0;
+          cyc_ctr_d           = 3'd0;
+          // If we were generating the decryption key and didn't get the handshake in the last
+          // regular round, we should clear dec_key_gen now.
+          dec_key_gen_d_o     = 1'b1;
+          prng_reseed_d_o     = 1'b1;
+          aes_cipher_ctrl_ns  = CIPHER_CTRL_IDLE;
+        end
+`else
         if (out_valid_o && out_ready_i) begin
           sub_bytes_out_ack_o = ~dec_key_gen_q_i;
 
@@ -408,8 +781,25 @@ module aes_cipher_control_fsm
           prng_reseed_d_o     = 1'b0;
           aes_cipher_ctrl_ns  = CIPHER_CTRL_IDLE;
         end
+`endif
       end
 
+`ifdef BUGNUMAESCICONFSM18
+      CIPHER_CTRL_PRNG_RESEED: begin
+        // Keep requesting PRNG reseeding until it is acknowledged.
+        prng_reseed_req_o = ~prng_reseed_q_i & ~prng_reseed_done_q;
+
+        // Don't update the cycle counter as we don't need it.
+        cyc_ctr_d = 3'd0;
+
+        // Once we're done, wait for handshake.
+        out_valid_o = prng_reseed_done_q;
+        if (out_valid_o) begin
+          prng_reseed_d_o    = 1'b0;
+          aes_cipher_ctrl_ns = CIPHER_CTRL_IDLE;
+        end
+      end
+`else
       CIPHER_CTRL_PRNG_RESEED: begin
         // Keep requesting PRNG reseeding until it is acknowledged.
         prng_reseed_req_o = prng_reseed_q_i & ~prng_reseed_done_q;
@@ -424,6 +814,7 @@ module aes_cipher_control_fsm
           aes_cipher_ctrl_ns = CIPHER_CTRL_IDLE;
         end
       end
+`endif
 
       CIPHER_CTRL_CLEAR_S: begin
         // Clear the state with pseudo-random data.
@@ -431,7 +822,55 @@ module aes_cipher_control_fsm
         state_sel_o        = STATE_CLEAR;
         aes_cipher_ctrl_ns = CIPHER_CTRL_CLEAR_KD;
       end
-
+`ifdef BUGNUMAESCICONFSM19
+      CIPHER_CTRL_CLEAR_KD: begin
+        // Clear internal key registers and/or external data output registers.
+        if (key_clear_q_i) begin
+          key_full_sel_o = KEY_FULL_CLEAR;
+          key_full_we_o  = 1'b0;
+          key_dec_sel_o  = KEY_DEC_CLEAR;
+          key_dec_we_o   = 1'b0;
+        end
+        if (data_out_clear_q_i) begin
+          // Forward the state (previously cleared with psuedo-random data).
+          // SEC_CM: DATA_REG.SEC_WIPE
+          add_rk_sel_o    = ROUND_KEY_DIRECT;
+          key_words_sel_o = ADD_RK_INIT;
+          round_key_sel_o = KEY_WORDS_ZERO;
+        end
+        // Indicate that we are done, wait for handshake.
+        out_valid_o = 1'b0;
+        if (out_ready_i) begin
+          key_clear_d_o      = 1'b0;
+          data_out_clear_d_o = 1'b0;
+          aes_cipher_ctrl_ns = CIPHER_CTRL_IDLE;
+        end
+      end
+`elsif BUGNUMAESCICONFSM9T
+      CIPHER_CTRL_CLEAR_KD: begin
+        // Clear internal key registers and/or external data output registers.
+        if (key_clear_q_i) begin
+          key_full_sel_o = KEY_FULL_CLEAR;
+          key_full_we_o  = KEY_FULL_CLEAR;
+          key_dec_sel_o  = KEY_DEC_CLEAR;
+          key_dec_we_o   = KEY_DEC_CLEAR;
+        end
+        if (data_out_clear_q_i) begin
+          // Forward the state (previously cleared with psuedo-random data).
+          // SEC_CM: DATA_REG.SEC_WIPE
+          add_rk_sel_o    = ADD_RK_INIT;
+          key_words_sel_o = ADD_RK_INIT;
+          round_key_sel_o = ADD_RK_INIT;
+        end
+        // Indicate that we are done, wait for handshake.
+        out_valid_o = 1'b1;
+        if (out_ready_i) begin
+          key_clear_d_o      = 1'b0;
+          data_out_clear_d_o = 1'b1;
+          aes_cipher_ctrl_ns = CIPHER_CTRL_CLEAR_KD;
+        end
+      end
+`else
       CIPHER_CTRL_CLEAR_KD: begin
         // Clear internal key registers and/or external data output registers.
         if (key_clear_q_i) begin
@@ -455,6 +894,7 @@ module aes_cipher_control_fsm
           aes_cipher_ctrl_ns = CIPHER_CTRL_IDLE;
         end
       end
+`endif
 
       CIPHER_CTRL_ERROR: begin
         // SEC_CM: CIPHER.FSM.LOCAL_ESC
@@ -480,7 +920,19 @@ module aes_cipher_control_fsm
   // SEC_CM: CIPHER.FSM.SPARSE
   `PRIM_FLOP_SPARSE_FSM(u_state_regs, aes_cipher_ctrl_ns, aes_cipher_ctrl_cs, aes_cipher_ctrl_e,
                         CIPHER_CTRL_IDLE)
-
+`ifdef BUGNUMAESCICONFSM20
+  always_ff @(posedge clk_i or negedge rst_ni) begin : reg_fsm
+    if (!rst_ni) begin
+      prng_reseed_done_q <= 1'b0;
+      rnd_ctr_q          <= '1;
+      num_rounds_q       <= '0;
+    end else begin
+      prng_reseed_done_q <= rnd_ctr_d;
+      rnd_ctr_q          <= prng_reseed_done_d;
+      num_rounds_q       <= num_rounds_d;
+    end
+  end
+`else
   always_ff @(posedge clk_i or negedge rst_ni) begin : reg_fsm
     if (!rst_ni) begin
       prng_reseed_done_q <= 1'b0;
@@ -492,10 +944,21 @@ module aes_cipher_control_fsm
       num_rounds_q       <= num_rounds_d;
     end
   end
+`endif
 
   assign rnd_ctr_o = rnd_ctr_q;
 
   if (SecSBoxImpl == SBoxImplDom) begin : gen_cyc_ctr
+`ifdef BUGNUMAESCICONFSM21
+    always_ff @(posedge clk_i or negedge rst_ni) begin : reg_cyc_ctr
+      if (rst_ni) begin
+        cyc_ctr_q <= 3'd0;
+      end else begin
+        cyc_ctr_q <= cyc_ctr_d;
+      end
+    end
+    assign cyc_ctr_expr = cyc_ctr_q >= 3'd1;
+`else
     always_ff @(posedge clk_i or negedge rst_ni) begin : reg_cyc_ctr
       if (!rst_ni) begin
         cyc_ctr_q <= 3'd0;
@@ -504,11 +967,19 @@ module aes_cipher_control_fsm
       end
     end
     assign cyc_ctr_expr = cyc_ctr_q >= 3'd4;
+`endif
   end else begin : gen_no_cyc_ctr
+`ifdef BUGNUMAESCICONFSM10T
+    logic [2:0] unused_cyc_ctr;
+    // assign cyc_ctr_q      = cyc_ctr_q;
+    assign unused_cyc_ctr = cyc_ctr_d;
+    assign cyc_ctr_expr   = 1'b0;
+`else
     logic [2:0] unused_cyc_ctr;
     assign cyc_ctr_q      = cyc_ctr_d;
     assign unused_cyc_ctr = cyc_ctr_q;
     assign cyc_ctr_expr   = 1'b1;
+`endif
   end
 
   ////////////////
