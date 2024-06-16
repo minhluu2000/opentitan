@@ -52,15 +52,15 @@ module aes_ctr_fsm
     alert_o  = 1'b0;
 
     // FSM
-`ifdef BUGNUMCTRFSM1
+`ifdef BUGNUMCNRFSM1
     // aes_ctr_ns      = aes_ctr_cs;
     ctr_slice_idx_d = ctr_slice_idx_q;
     ctr_carry_d     = ctr_carry_q;
-`elsif BUGNUMCTRFSM2
+`elsif BUGNUMCNRFSM2
     aes_ctr_ns  = aes_ctr_cs;
     // ctr_slice_idx_d = ctr_slice_idx_q;
     ctr_carry_d = ctr_carry_q;
-`elsif BUGNUMCTRFSM1T
+`elsif BUGNUMCNRFSM1T
     aes_ctr_ns      = ctr_carry_q;
     ctr_slice_idx_d = aes_ctr_cs;
     ctr_carry_d     = ctr_slice_idx_q;
@@ -71,7 +71,7 @@ module aes_ctr_fsm
 `endif
 
     unique case (aes_ctr_cs)
-`ifdef BUGNUMCTRFSM3
+`ifdef BUGNUMCNRFSM3
       CTR_IDLE: begin
         ready_o = 1'b1;
         if (incr_i == 1'b1) begin
@@ -81,7 +81,7 @@ module aes_ctr_fsm
           aes_ctr_ns      = CTR_INCR;
         end
       end
-`elsif BUGNUMCTRFSM4
+`elsif BUGNUMCNRFSM4
       CTR_IDLE: begin
         ready_o = 1'b1;
         if (incr_i == 1'b1) begin
@@ -91,7 +91,7 @@ module aes_ctr_fsm
           aes_ctr_ns      = CTR_INCR;
         end
       end
-`elsif BUGNUMCTRFSM2T
+`elsif BUGNUMCNRFSM2T
       CTR_IDLE: begin
         ready_o = 1'b1;
         if (incr_i == 1'b1) begin
@@ -113,25 +113,14 @@ module aes_ctr_fsm
       end
 `endif
 
-`ifdef BUGNUMCTRFSM5
+`ifdef BUGNUMCNRFSM5
       CTR_INCR: begin
         // Increment slice index.
-        ctr_slice_idx_d = SliceIdxWidth'(1);
+        ctr_slice_idx_d = ctr_slice_idx_q + SliceIdxWidth'(1);
         ctr_carry_d     = ctr_value[SliceSizeCtr];
         ctr_we_o        = 1'b1;
 
-        if (ctr_slice_idx_q == {SliceIdxWidth{1'b1}}) begin
-          aes_ctr_ns = CTR_IDLE;
-        end
-      end
-`elsif BUGNUMCTRFSM6
-      CTR_INCR: begin
-        // Increment slice index.
-        ctr_slice_idx_d = ctr_slice_idx_q;
-        ctr_carry_d     = ctr_value[SliceSizeCtr-1];
-        ctr_we_o        = 1'b1;
-
-        if (ctr_slice_idx_q == {SliceIdxWidth{1'b1}}) begin
+        if (ctr_slice_idx_q != {SliceIdxWidth{1'b1}}) begin
           aes_ctr_ns = CTR_IDLE;
         end
       end
@@ -148,7 +137,7 @@ module aes_ctr_fsm
       end
 `endif
 
-`ifdef BUGNUMCTRFSM3T
+`ifdef BUGNUMCNRFSM3T
       CTR_ERROR: begin
         // SEC_CM: CTR.FSM.LOCAL_ESC
         // Terminal error state
@@ -160,19 +149,6 @@ module aes_ctr_fsm
       default: begin
         aes_ctr_ns = CTR_IDLE;
         alert_o = 1'b1;
-      end
-`elsif BUGNUMCTRFSM4T
-      CTR_ERROR: begin
-        // SEC_CM: CTR.FSM.LOCAL_ESC
-        // Terminal error state
-        alert_o = 1'b1;
-      end
-
-      // We should never get here. If we do (e.g. via a malicious
-      // glitch), error out immediately.
-      default: begin
-        aes_ctr_ns = CTR_IDLE;
-        alert_o = 1'b0;
       end
 `else
       CTR_ERROR: begin
@@ -197,6 +173,17 @@ module aes_ctr_fsm
   end
 
   // Registers
+`ifdef BUGNUMCNRFSM4T
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      ctr_slice_idx_q <= '1;
+      // ctr_carry_q     <= '1;
+    end else begin
+      ctr_slice_idx_q <= ctr_slice_idx_d;
+      // ctr_carry_q     <= ctr_carry_d;
+    end
+  end
+`else
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
       ctr_slice_idx_q <= '0;
@@ -206,12 +193,17 @@ module aes_ctr_fsm
       ctr_carry_q     <= ctr_carry_d;
     end
   end
+`endif
 
   // SEC_CM: CTR.FSM.SPARSE
   `PRIM_FLOP_SPARSE_FSM(u_state_regs, aes_ctr_ns, aes_ctr_cs, aes_ctr_e, CTR_IDLE)
 
   // Forward slice index.
+`ifdef BUGNUMCNRFSM6
+  // assign ctr_slice_idx_o = ctr_slice_idx_q;
+`else
   assign ctr_slice_idx_o = ctr_slice_idx_q;
+`endif
 
   ////////////////
   // Assertions //
