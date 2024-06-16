@@ -958,6 +958,15 @@ module aes_cipher_control_fsm
       end
     end
     assign cyc_ctr_expr = cyc_ctr_q >= 3'd1;
+`elsif BUGNUMAESCICONFSM10T
+    always_ff @(negedge clk_i or negedge rst_ni) begin : reg_cyc_ctr
+      if (!rst_ni) begin
+        cyc_ctr_q <= 3'd4;
+      end else begin
+        cyc_ctr_q <= ~cyc_ctr_d;
+      end
+    end
+    assign cyc_ctr_expr = 3'd0;
 `else
     always_ff @(posedge clk_i or negedge rst_ni) begin : reg_cyc_ctr
       if (!rst_ni) begin
@@ -969,17 +978,10 @@ module aes_cipher_control_fsm
     assign cyc_ctr_expr = cyc_ctr_q >= 3'd4;
 `endif
   end else begin : gen_no_cyc_ctr
-`ifdef BUGNUMAESCICONFSM10T
-    logic [2:0] unused_cyc_ctr;
-    // assign cyc_ctr_q      = cyc_ctr_q;
-    assign unused_cyc_ctr = cyc_ctr_d;
-    assign cyc_ctr_expr   = 1'b0;
-`else
     logic [2:0] unused_cyc_ctr;
     assign cyc_ctr_q      = cyc_ctr_d;
     assign unused_cyc_ctr = cyc_ctr_q;
     assign cyc_ctr_expr   = 1'b1;
-`endif
   end
 
   ////////////////
