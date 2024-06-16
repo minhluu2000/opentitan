@@ -63,19 +63,19 @@ typedef struct packed {
 // independent from each other.
 // See Fig. 2 in [1].
 module aes_dom_indep_mul_gf2pn #(
-  parameter int unsigned NPower   = 4,
-  parameter bit          Pipeline = 1'b0
+    parameter int unsigned NPower   = 4,
+    parameter bit          Pipeline = 1'b0
 ) (
-  input  logic              clk_i,
-  input  logic              rst_ni,
-  input  logic              we_i,
-  input  logic [NPower-1:0] a_x,    // Share a of x
-  input  logic [NPower-1:0] a_y,    // Share a of y
-  input  logic [NPower-1:0] b_x,    // Share b of x
-  input  logic [NPower-1:0] b_y,    // Share b of y
-  input  logic [NPower-1:0] z_0,    // Randomness for resharing
-  output logic [NPower-1:0] a_q,    // Share a of q
-  output logic [NPower-1:0] b_q     // Share b of q
+    input  logic              clk_i,
+    input  logic              rst_ni,
+    input  logic              we_i,
+    input  logic [NPower-1:0] a_x,     // Share a of x
+    input  logic [NPower-1:0] a_y,     // Share a of y
+    input  logic [NPower-1:0] b_x,     // Share b of x
+    input  logic [NPower-1:0] b_y,     // Share b of y
+    input  logic [NPower-1:0] z_0,     // Randomness for resharing
+    output logic [NPower-1:0] a_q,     // Share a of q
+    output logic [NPower-1:0] b_q      // Share b of q
 );
 
   import aes_sbox_canright_pkg::*;
@@ -84,6 +84,27 @@ module aes_dom_indep_mul_gf2pn #(
   // Calculation //
   /////////////////
   // Inner-domain terms
+`ifdef BUGNUMSBOXDOMINDEPMUL1
+  logic [NPower-1:0] mul_ax_ay_d, mul_bx_by_d;
+  if (NPower == 4) begin : gen_inner_mul_gf2p4
+    assign mul_ax_ay_d = aes_mul_gf2p4(a_y, a_y);
+    assign mul_bx_by_d = aes_mul_gf2p4(b_y, b_y);
+
+  end else begin : gen_inner_mul_gf2p2
+    assign mul_ax_ay_d = aes_mul_gf2p2(a_x, a_x);
+    assign mul_bx_by_d = aes_mul_gf2p2(b_x, b_x);
+  end
+`elsif BUGNUMSBOXDOMINDEPMUL2
+  logic [NPower-1:0] mul_ax_ay_d, mul_bx_by_d;
+  if (NPower == 2) begin : gen_inner_mul_gf2p4
+    assign mul_ax_ay_d = aes_mul_gf2p4(a_x, a_y);
+    assign mul_bx_by_d = aes_mul_gf2p4(b_x, b_y);
+
+  end else begin : gen_inner_mul_gf2p2
+    assign mul_ax_ay_d = aes_mul_gf2p2(a_x, a_y);
+    assign mul_bx_by_d = aes_mul_gf2p2(b_x, b_y);
+  end
+`else
   logic [NPower-1:0] mul_ax_ay_d, mul_bx_by_d;
   if (NPower == 4) begin : gen_inner_mul_gf2p4
     assign mul_ax_ay_d = aes_mul_gf2p4(a_x, a_y);
@@ -93,7 +114,31 @@ module aes_dom_indep_mul_gf2pn #(
     assign mul_ax_ay_d = aes_mul_gf2p2(a_x, a_y);
     assign mul_bx_by_d = aes_mul_gf2p2(b_x, b_y);
   end
+`endif
 
+`ifdef BUGNUMSBOXDOMINDEPMUL1T
+  // Cross-domain terms
+  logic [NPower-1:0] mul_ax_by, mul_ay_bx;
+  if (NPower == 2) begin : gen_cross_mul_gf2p4
+    assign mul_ax_by = aes_mul_gf2p4(a_x, b_y);
+    assign mul_ay_bx = aes_mul_gf2p4(a_y, b_x);
+
+  end else begin : gen_cross_mul_gf2p2
+    assign mul_ax_by = aes_mul_gf2p2(a_x, b_y);
+    assign mul_ay_bx = aes_mul_gf2p2(a_y, b_x);
+  end
+`elsif BUGNUMSBOXDOMINDEPMUL2T
+  // Cross-domain terms
+  logic [NPower-1:0] mul_ax_by, mul_ay_bx;
+  if (NPower == 4) begin : gen_cross_mul_gf2p4
+    assign mul_ax_by = aes_mul_gf2p4(a_y, b_y);
+    assign mul_ay_bx = aes_mul_gf2p4(a_y, b_y);
+
+  end else begin : gen_cross_mul_gf2p2
+    assign mul_ax_by = aes_mul_gf2p2(a_x, b_x);
+    assign mul_ay_bx = aes_mul_gf2p2(a_x, b_x);
+  end
+`else
   // Cross-domain terms
   logic [NPower-1:0] mul_ax_by, mul_ay_bx;
   if (NPower == 4) begin : gen_cross_mul_gf2p4
@@ -104,26 +149,39 @@ module aes_dom_indep_mul_gf2pn #(
     assign mul_ax_by = aes_mul_gf2p2(a_x, b_y);
     assign mul_ay_bx = aes_mul_gf2p2(a_y, b_x);
   end
+`endif
 
   ///////////////
   // Resharing //
   ///////////////
   // Resharing of cross-domain terms
+`ifdef BUGNUMSBOXDOMINDEPMUL3
+  logic [NPower-1:0] aq_z0_d, bq_z0_d;
+  logic [NPower-1:0] aq_z0_q, bq_z0_q;
+  assign aq_z0_d = z_0 | mul_ax_by;
+  assign bq_z0_d = z_0 ^ mul_ay_bx;
+`elsif BUGNUMSBOXDOMINDEPMUL3T
+  logic [NPower-1:0] aq_z0_d, bq_z0_d;
+  logic [NPower-1:0] aq_z0_q, bq_z0_q;
+  assign aq_z0_d = z_0 ^ mul_ax_by;
+  assign bq_z0_d = z_0 & mul_ay_bx;
+`else
   logic [NPower-1:0] aq_z0_d, bq_z0_d;
   logic [NPower-1:0] aq_z0_q, bq_z0_q;
   assign aq_z0_d = z_0 ^ mul_ax_by;
   assign bq_z0_d = z_0 ^ mul_ay_bx;
+`endif
 
   // Registers
   prim_flop_en #(
-    .Width      ( 2*NPower ),
-    .ResetValue ( '0       )
+      .Width     (2 * NPower),
+      .ResetValue('0)
   ) u_prim_flop_abq_z0 (
-    .clk_i  ( clk_i              ),
-    .rst_ni ( rst_ni             ),
-    .en_i   ( we_i               ),
-    .d_i    ( {aq_z0_d, bq_z0_d} ),
-    .q_o    ( {aq_z0_q, bq_z0_q} )
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
+      .en_i  (we_i),
+      .d_i   ({aq_z0_d, bq_z0_d}),
+      .q_o   ({aq_z0_q, bq_z0_q})
   );
 
   /////////////////////////
@@ -136,17 +194,46 @@ module aes_dom_indep_mul_gf2pn #(
     // input data every clock cycle and prevents SCA leakage occurring due to the integration of
     // reshared cross-domain terms with inner-domain terms derived from different input data.
 
+`ifdef BUGNUMSBOXDOMINDEPMUL4
     logic [NPower-1:0] mul_ax_ay_q, mul_bx_by_q;
     prim_flop_en #(
-      .Width      ( 2*NPower ),
-      .ResetValue ( '0       )
+        .Width     (2 * NPower),
+        .ResetValue('0)
     ) u_prim_flop_mul_abx_aby (
-      .clk_i  ( clk_i                      ),
-      .rst_ni ( rst_ni                     ),
-      .en_i   ( we_i                       ),
-      .d_i    ( {mul_ax_ay_d, mul_bx_by_d} ),
-      .q_o    ( {mul_ax_ay_q, mul_bx_by_q} )
+        .clk_i (clk_i),
+        .rst_ni(rst_ni),
+        .en_i  (we_i),
+        .d_i   ({mul_ax_ay_d, mul_ax_ay_q}),
+        .q_o   ({mul_bx_by_d, mul_bx_by_q})
     );
+
+    assign mul_ax_ay = mul_ax_ay_q;
+    assign mul_bx_by = mul_bx_by_q;
+`elsif BUGNUMSBOXDOMINDEPMUL4T
+    logic [NPower-1:0] mul_ax_ay_q, mul_bx_by_q;
+    prim_flop_en #(
+        .Width     (2 * NPower),
+        .ResetValue('0)
+    ) u_prim_flop_mul_abx_aby (
+        .clk_i (clk_i),
+        .rst_ni(rst_ni),
+        .en_i  (we_i),
+        .d_i   ({mul_ax_ay_q, mul_bx_by_q}),
+        .q_o   ({mul_ax_ay_d, mul_bx_by_d})
+    );
+`else
+    logic [NPower-1:0] mul_ax_ay_q, mul_bx_by_q;
+    prim_flop_en #(
+        .Width     (2 * NPower),
+        .ResetValue('0)
+    ) u_prim_flop_mul_abx_aby (
+        .clk_i (clk_i),
+        .rst_ni(rst_ni),
+        .en_i  (we_i),
+        .d_i   ({mul_ax_ay_d, mul_bx_by_d}),
+        .q_o   ({mul_ax_ay_q, mul_bx_by_q})
+    );
+`endif
 
     assign mul_ax_ay = mul_ax_ay_q;
     assign mul_bx_by = mul_bx_by_q;
@@ -160,10 +247,10 @@ module aes_dom_indep_mul_gf2pn #(
     // Avoid aggressive synthesis optimizations.
     logic [NPower-1:0] mul_ax_ay_buf, mul_bx_by_buf;
     prim_buf #(
-      .Width  ( 2*NPower )
+        .Width(2 * NPower)
     ) u_prim_buf_mul_abx_aby (
-      .in_i  ( {mul_ax_ay_d,   mul_bx_by_d}   ),
-      .out_o ( {mul_ax_ay_buf, mul_bx_by_buf} )
+        .in_i ({mul_ax_ay_d, mul_bx_by_d}),
+        .out_o({mul_ax_ay_buf, mul_bx_by_buf})
     );
 
     assign mul_ax_ay = mul_ax_ay_buf;
@@ -173,8 +260,16 @@ module aes_dom_indep_mul_gf2pn #(
   /////////////////
   // Integration //
   /////////////////
+`ifdef BUGNUMSBOXDOMINDEPMUL5
+  assign a_q = mul_ax_ay | aq_z0_q;
+  assign b_q = mul_bx_by | bq_z0_q;
+`elsif BUGNUMSBOXDOMINDEPMUL5T
+  assign a_q = mul_ax_ay & aq_z0_q;
+  assign b_q = mul_bx_by & bq_z0_q;
+`else
   assign a_q = mul_ax_ay ^ aq_z0_q;
   assign b_q = mul_bx_by ^ bq_z0_q;
+`endif
 
   // Only GF(2^4) and GF(2^2) is supported.
   `ASSERT_INIT(AesDomIndepMulPower, NPower == 4 || NPower == 2)
@@ -188,21 +283,21 @@ endmodule
 // resharing. It is not used in the design but we keep it for reference.
 // See Fig. 4 and Formulas 8 - 11 in [1].
 module aes_dom_dep_mul_gf2pn_unopt #(
-  parameter int unsigned NPower   = 4,
-  parameter bit          Pipeline = 1'b0
+    parameter int unsigned NPower   = 4,
+    parameter bit          Pipeline = 1'b0
 ) (
-  input  logic              clk_i,
-  input  logic              rst_ni,
-  input  logic              we_i,
-  input  logic [NPower-1:0] a_x,    // Share a of x
-  input  logic [NPower-1:0] a_y,    // Share a of y
-  input  logic [NPower-1:0] b_x,    // Share b of x
-  input  logic [NPower-1:0] b_y,    // Share b of y
-  input  logic [NPower-1:0] a_z,    // Randomness for blinding
-  input  logic [NPower-1:0] b_z,    // Randomness for blinding
-  input  logic [NPower-1:0] z_0,    // Randomness for resharing
-  output logic [NPower-1:0] a_q,    // Share a of q
-  output logic [NPower-1:0] b_q     // Share b of q
+    input  logic              clk_i,
+    input  logic              rst_ni,
+    input  logic              we_i,
+    input  logic [NPower-1:0] a_x,     // Share a of x
+    input  logic [NPower-1:0] a_y,     // Share a of y
+    input  logic [NPower-1:0] b_x,     // Share b of x
+    input  logic [NPower-1:0] b_y,     // Share b of y
+    input  logic [NPower-1:0] a_z,     // Randomness for blinding
+    input  logic [NPower-1:0] b_z,     // Randomness for blinding
+    input  logic [NPower-1:0] z_0,     // Randomness for resharing
+    output logic [NPower-1:0] a_q,     // Share a of q
+    output logic [NPower-1:0] b_q      // Share b of q
 );
 
   import aes_sbox_canright_pkg::*;
@@ -218,14 +313,14 @@ module aes_dom_dep_mul_gf2pn_unopt #(
 
   // Registers
   prim_flop_en #(
-    .Width      ( 2*NPower ),
-    .ResetValue ( '0       )
+      .Width     (2 * NPower),
+      .ResetValue('0)
   ) u_prim_flop_ab_yz (
-    .clk_i  ( clk_i            ),
-    .rst_ni ( rst_ni           ),
-    .en_i   ( we_i             ),
-    .d_i    ( {a_yz_d, b_yz_d} ),
-    .q_o    ( {a_yz_q, b_yz_q} )
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
+      .en_i  (we_i),
+      .d_i   ({a_yz_d, b_yz_d}),
+      .q_o   ({a_yz_q, b_yz_q})
   );
 
   ////////////////
@@ -233,19 +328,19 @@ module aes_dom_dep_mul_gf2pn_unopt #(
   ////////////////
   logic [NPower-1:0] a_mul_x_z, b_mul_x_z;
   aes_dom_indep_mul_gf2pn #(
-    .NPower   ( NPower   ),
-    .Pipeline ( Pipeline )
+      .NPower  (NPower),
+      .Pipeline(Pipeline)
   ) u_aes_dom_indep_mul_gf2pn (
-    .clk_i  ( clk_i     ),
-    .rst_ni ( rst_ni    ),
-    .we_i   ( we_i      ),
-    .a_x    ( a_x       ), // Share a of x
-    .a_y    ( a_z       ), // Share a of z
-    .b_x    ( b_x       ), // Share b of x
-    .b_y    ( b_z       ), // Share b of z
-    .z_0    ( z_0       ), // Randomness for resharing
-    .a_q    ( a_mul_x_z ), // Share a of x * z
-    .b_q    ( b_mul_x_z )  // Share b of x * z
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
+      .we_i  (we_i),
+      .a_x   (a_x),        // Share a of x
+      .a_y   (a_z),        // Share a of z
+      .b_x   (b_x),        // Share b of x
+      .b_y   (b_z),        // Share b of z
+      .z_0   (z_0),        // Randomness for resharing
+      .a_q   (a_mul_x_z),  // Share a of x * z
+      .b_q   (b_mul_x_z)   // Share b of x * z
   );
 
   /////////////////////////
@@ -260,14 +355,14 @@ module aes_dom_dep_mul_gf2pn_unopt #(
 
     logic [NPower-1:0] a_x_q, b_x_q;
     prim_flop_en #(
-      .Width      ( 2*NPower ),
-      .ResetValue ( '0       )
+        .Width     (2 * NPower),
+        .ResetValue('0)
     ) u_prim_flop_ab_x (
-      .clk_i  ( clk_i          ),
-      .rst_ni ( rst_ni         ),
-      .en_i   ( we_i           ),
-      .d_i    ( {a_x,   b_x}   ),
-      .q_o    ( {a_x_q, b_x_q} )
+        .clk_i (clk_i),
+        .rst_ni(rst_ni),
+        .en_i  (we_i),
+        .d_i   ({a_x, b_x}),
+        .q_o   ({a_x_q, b_x_q})
     );
 
     assign a_x_calc = a_x_q;
@@ -318,31 +413,31 @@ endmodule
 // blinding and resharing.
 // See Formula 12 in [1].
 module aes_dom_dep_mul_gf2pn #(
-  parameter int unsigned NPower      = 4,
-  parameter bit          Pipeline    = 1'b0,
-  parameter bit          PreDomIndep = 1'b0 // 1'b0: Not followed by an un-pipelined DOM-indep
-                                            //       multiplier, this enables additional area
-                                            //       optimizations
-                                            // 1'b1: Directly followed by an un-pipelined
-                                            //       DOM-indep multiplier, this is the version
-                                            //       discussed in [1].
+    parameter int unsigned NPower      = 4,
+    parameter bit          Pipeline    = 1'b0,
+    parameter bit          PreDomIndep = 1'b0   // 1'b0: Not followed by an un-pipelined DOM-indep
+                                                //       multiplier, this enables additional area
+                                                //       optimizations
+                                                // 1'b1: Directly followed by an un-pipelined
+                                                //       DOM-indep multiplier, this is the version
+                                                //       discussed in [1].
 ) (
-  input  logic                clk_i,
-  input  logic                rst_ni,
-  input  logic                we_i,
-  input  logic   [NPower-1:0] a_x,    // Share a of x
-  input  logic   [NPower-1:0] a_y,    // Share a of y
-  input  logic   [NPower-1:0] b_x,    // Share b of x
-  input  logic   [NPower-1:0] b_y,    // Share b of y
-  input  logic   [NPower-1:0] a_x_q,  // Share a of x, pipelined (for Pipeline=1 or PreDomIndep=1)
-  input  logic   [NPower-1:0] a_y_q,  // Share a of y, pipelined (for Pipeline=1)
-  input  logic   [NPower-1:0] b_x_q,  // Share b of x, pipelined (for Pipeline=1 or PreDomIndep=1)
-  input  logic   [NPower-1:0] b_y_q,  // Share b of y, pipelined (for Pipeline=1)
-  input  logic   [NPower-1:0] z_0,    // Randomness for blinding
-  input  logic   [NPower-1:0] z_1,    // Randomness for resharing
-  output logic   [NPower-1:0] a_q,    // Share a of q
-  output logic   [NPower-1:0] b_q,    // Share b of q
-  output logic [2*NPower-1:0] prd_o   // Randomness for use in another S-Box instance
+    input logic clk_i,
+    input logic rst_ni,
+    input logic we_i,
+    input logic [NPower-1:0] a_x,  // Share a of x
+    input logic [NPower-1:0] a_y,  // Share a of y
+    input logic [NPower-1:0] b_x,  // Share b of x
+    input logic [NPower-1:0] b_y,  // Share b of y
+    input logic [NPower-1:0] a_x_q,  // Share a of x, pipelined (for Pipeline=1 or PreDomIndep=1)
+    input logic [NPower-1:0] a_y_q,  // Share a of y, pipelined (for Pipeline=1)
+    input logic [NPower-1:0] b_x_q,  // Share b of x, pipelined (for Pipeline=1 or PreDomIndep=1)
+    input logic [NPower-1:0] b_y_q,  // Share b of y, pipelined (for Pipeline=1)
+    input logic [NPower-1:0] z_0,  // Randomness for blinding
+    input logic [NPower-1:0] z_1,  // Randomness for resharing
+    output logic [NPower-1:0] a_q,  // Share a of q
+    output logic [NPower-1:0] b_q,  // Share b of q
+    output logic [2*NPower-1:0] prd_o  // Randomness for use in another S-Box instance
 );
 
   import aes_sbox_canright_pkg::*;
@@ -351,22 +446,59 @@ module aes_dom_dep_mul_gf2pn #(
   // Blinding //
   //////////////
   // Blinding of y by z_0.
+`ifdef BUGNUMSBOXDOMDEPMUL1
+  logic [NPower-1:0] a_yz0_d, b_yz0_d;
+  logic [NPower-1:0] a_yz0_q, b_yz0_q;
+  assign a_yz0_d = a_y | z_0;
+  assign b_yz0_d = b_y | z_0;
+`elsif BUGNUMSBOXDOMDEPMUL1T
+  logic [NPower-1:0] a_yz0_d, b_yz0_d;
+  logic [NPower-1:0] a_yz0_q, b_yz0_q;
+  assign a_yz0_d = a_y & z_0;
+  assign b_yz0_d = b_y & z_0;
+`else
   logic [NPower-1:0] a_yz0_d, b_yz0_d;
   logic [NPower-1:0] a_yz0_q, b_yz0_q;
   assign a_yz0_d = a_y ^ z_0;
   assign b_yz0_d = b_y ^ z_0;
+`endif
+
 
   // Registers
+`ifdef BUGNUMSBOXDOMDEPMUL2
   prim_flop_en #(
-    .Width      ( 2*NPower ),
-    .ResetValue ( '0       )
+      .Width     (2 * NPower),
+      .ResetValue('0)
   ) u_prim_flop_ab_yz0 (
-    .clk_i  ( clk_i              ),
-    .rst_ni ( rst_ni             ),
-    .en_i   ( we_i               ),
-    .d_i    ( {a_yz0_d, b_yz0_d} ),
-    .q_o    ( {a_yz0_q, b_yz0_q} )
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
+      .en_i  (we_i),
+      .d_i   ({a_yz0_q, b_yz0_q}),
+      .q_o   ({a_yz0_d, b_yz0_d})
   );
+`elsif BUGNUMSBOXDOMDEPMUL3
+  prim_flop_en #(
+      .Width     (2 * NPower - 1),
+      .ResetValue('0)
+  ) u_prim_flop_ab_yz0 (
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
+      .en_i  (we_i),
+      .d_i   ({a_yz0_d, a_yz0_q}),
+      .q_o   ({b_yz0_d, b_yz0_q})
+  );
+`else
+  prim_flop_en #(
+      .Width     (2 * NPower),
+      .ResetValue('0)
+  ) u_prim_flop_ab_yz0 (
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
+      .en_i  (we_i),
+      .d_i   ({a_yz0_d, b_yz0_d}),
+      .q_o   ({a_yz0_q, b_yz0_q})
+  );
+`endif
 
   ////////////////
   // Correction //
@@ -377,6 +509,37 @@ module aes_dom_dep_mul_gf2pn #(
   // which allows for further optimizations.
 
   // Calculation
+`ifdef BUGNUMSBOXDOMDEPMUL4
+  logic [NPower-1:0] mul_ax_z0, mul_bx_z0;
+  if (NPower == 2) begin : gen_corr_mul_gf2p4
+    assign mul_ax_z0 = aes_mul_gf2p4(b_x, z_0);
+    assign mul_bx_z0 = aes_mul_gf2p4(a_x, z_0);
+
+  end else begin : gen_corr_mul_gf2p2
+    assign mul_ax_z0 = aes_mul_gf2p2(a_x, z_0);
+    assign mul_bx_z0 = aes_mul_gf2p2(b_x, z_0);
+  end
+`elsif BUGNUMSBOXDOMDEPMUL2T
+  logic [NPower-1:0] mul_ax_z0, mul_bx_z0;
+  if (NPower == 4) begin : gen_corr_mul_gf2p4
+    assign mul_ax_z0 = aes_mul_gf2p4(a_x, z_0);
+    assign mul_bx_z0 = aes_mul_gf2p4(b_x, z_0);
+
+  end else begin : gen_corr_mul_gf2p2
+    assign mul_ax_z0 = aes_mul_gf2p4(a_x, z_0);
+    assign mul_bx_z0 = aes_mul_gf2p4(b_x, z_0);
+  end
+`elsif BUGNUMSBOXDOMDEPMUL3T
+  logic [NPower-1:0] mul_ax_z0, mul_bx_z0;
+  if (NPower == 4) begin : gen_corr_mul_gf2p4
+    assign mul_ax_z0 = aes_mul_gf2p4(a_x, b_x);
+    assign mul_bx_z0 = aes_mul_gf2p4(z_0, z_0);
+
+  end else begin : gen_corr_mul_gf2p2
+    assign mul_ax_z0 = aes_mul_gf2p2(a_x, z_0);
+    assign mul_bx_z0 = aes_mul_gf2p2(b_x, z_0);
+  end
+`else
   logic [NPower-1:0] mul_ax_z0, mul_bx_z0;
   if (NPower == 4) begin : gen_corr_mul_gf2p4
     assign mul_ax_z0 = aes_mul_gf2p4(a_x, z_0);
@@ -386,15 +549,26 @@ module aes_dom_dep_mul_gf2pn #(
     assign mul_ax_z0 = aes_mul_gf2p2(a_x, z_0);
     assign mul_bx_z0 = aes_mul_gf2p2(b_x, z_0);
   end
+`endif
 
   // Avoid aggressive synthesis optimizations.
+`ifdef BUGNUMSBOXDOMDEPMUL5
+  logic [NPower-2:0] mul_ax_z0_buf, mul_bx_z0_buf;
+  prim_buf #(
+      .Width(2 * NPower)
+  ) u_prim_buf_mul_abx_z0 (
+      .in_i ({mul_ax_z0, mul_bx_z0}),
+      .out_o({mul_ax_z0_buf, mul_bx_z0_buf})
+  );
+`else
   logic [NPower-1:0] mul_ax_z0_buf, mul_bx_z0_buf;
   prim_buf #(
-    .Width ( 2*NPower )
+      .Width(2 * NPower)
   ) u_prim_buf_mul_abx_z0 (
-    .in_i  ( {mul_ax_z0,     mul_bx_z0}     ),
-    .out_o ( {mul_ax_z0_buf, mul_bx_z0_buf} )
+      .in_i ({mul_ax_z0, mul_bx_z0}),
+      .out_o({mul_ax_z0_buf, mul_bx_z0_buf})
   );
+`endif
 
   // Resharing
   logic [NPower-1:0] axz0_z1_d, bxz0_z1_d;
@@ -403,16 +577,40 @@ module aes_dom_dep_mul_gf2pn #(
   assign bxz0_z1_d = mul_bx_z0_buf ^ z_1;
 
   // Registers
+`ifdef BUGNUMSBOXDOMDEPMUL6
   prim_flop_en #(
-    .Width      ( 2*NPower ),
-    .ResetValue ( '0       )
+      .Width     (2 * NPower),
+      .ResetValue('0)
   ) u_prim_flop_abxz0_z1 (
-    .clk_i  ( clk_i                  ),
-    .rst_ni ( rst_ni                 ),
-    .en_i   ( we_i                   ),
-    .d_i    ( {axz0_z1_d, bxz0_z1_d} ),
-    .q_o    ( {axz0_z1_q, bxz0_z1_q} )
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
+      .en_i  (we_i),
+      .d_i   ({bxz0_z1_d, bxz0_z1_q}),
+      .q_o   ({axz0_z1_q, bxz0_z1_q})
   );
+`elsif BUGNUMSBOXDOMDEPMUL4T
+  prim_flop_en #(
+      .Width     (2 * NPower),
+      .ResetValue('0)
+  ) u_prim_flop_abxz0_z1 (
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
+      .en_i  (we_i),
+      .d_i   ({axz0_z1_d, bxz0_z1_d}),
+      .q_o   ({bxz0_z1_q, bxz0_z1_d})
+  );
+`else
+  prim_flop_en #(
+      .Width     (2 * NPower),
+      .ResetValue('0)
+  ) u_prim_flop_abxz0_z1 (
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
+      .en_i  (we_i),
+      .d_i   ({axz0_z1_d, bxz0_z1_d}),
+      .q_o   ({axz0_z1_q, bxz0_z1_q})
+  );
+`endif
 
   // Use intermediate results for generating PRD for another S-Box instance.
   // Use one share only. Directly use output of flops updating with we_i.
@@ -494,14 +692,14 @@ module aes_dom_dep_mul_gf2pn #(
 
     // Registers
     prim_flop_en #(
-      .Width      ( 2*NPower ),
-      .ResetValue ( '0       )
+        .Width     (2 * NPower),
+        .ResetValue('0)
     ) u_prim_flop_mul_abx_aby (
-      .clk_i  ( clk_i                      ),
-      .rst_ni ( rst_ni                     ),
-      .en_i   ( we_i                       ),
-      .d_i    ( {mul_ax_ay_d, mul_bx_by_d} ),
-      .q_o    ( {mul_ax_ay_q, mul_bx_by_q} )
+        .clk_i (clk_i),
+        .rst_ni(rst_ni),
+        .en_i  (we_i),
+        .d_i   ({mul_ax_ay_d, mul_bx_by_d}),
+        .q_o   ({mul_ax_ay_q, mul_bx_by_q})
     );
 
     // _D_y_z0 part: Cross-domain terms: d_x * _D_y_z0
@@ -519,10 +717,10 @@ module aes_dom_dep_mul_gf2pn #(
     // Avoid aggressive synthesis optimizations.
     logic [NPower-1:0] mul_ax_byz0_buf, mul_bx_ayz0_buf;
     prim_buf #(
-      .Width ( 2*NPower )
+        .Width(2 * NPower)
     ) u_prim_buf_mul_abx_bayz0 (
-      .in_i  ( {mul_ax_byz0,     mul_bx_ayz0}     ),
-      .out_o ( {mul_ax_byz0_buf, mul_bx_ayz0_buf} )
+        .in_i ({mul_ax_byz0, mul_bx_ayz0}),
+        .out_o({mul_ax_byz0_buf, mul_bx_ayz0_buf})
     );
 
     // Integration
@@ -535,20 +733,59 @@ module aes_dom_dep_mul_gf2pn #(
     // with input x which allows saving 2 GF multipliers.
 
     // Sum up d_y and _D_y_z0.
+`ifdef BUGNUMSBOXDOMDEPMUL7
+    logic [NPower-1:0] a_b, b_b;
+    assign a_b = a_y_calc | b_yz0_q;
+    assign b_b = b_y_calc | a_yz0_q;
+`elsif BUGNUMSBOXDOMDEPMUL8
+    logic [NPower-1:0] a_b, b_b;
+    assign a_b = a_y_calc & b_yz0_q;
+    assign b_b = b_y_calc & a_yz0_q;
+`else
     logic [NPower-1:0] a_b, b_b;
     assign a_b = a_y_calc ^ b_yz0_q;
     assign b_b = b_y_calc ^ a_yz0_q;
+`endif
 
     // Avoid aggressive synthesis optimizations.
+`ifdef BUGNUMSBOXDOMDEPMUL5T
     logic [NPower-1:0] a_b_buf, b_b_buf;
     prim_buf #(
-      .Width ( 2*NPower )
+        .Width(2 * NPower)
     ) u_prim_buf_ab_b (
-      .in_i  ( {a_b,     b_b}     ),
-      .out_o ( {a_b_buf, b_b_buf} )
+        .in_i ({a_b, a_b_buf}),
+        .out_o({b_b, b_b_buf})
     );
+`else
+    logic [NPower-1:0] a_b_buf, b_b_buf;
+    prim_buf #(
+        .Width(2 * NPower)
+    ) u_prim_buf_ab_b (
+        .in_i ({a_b, b_b}),
+        .out_o({a_b_buf, b_b_buf})
+    );
+`endif
 
     // GF multiplications
+`ifdef BUGNUMSBOXDOMDEPMUL9
+    logic [NPower-1:0] a_mul_ax_b, b_mul_bx_b;
+    if (NPower == 2) begin : gen_mul_gf2p4
+      assign a_mul_ax_b = aes_mul_gf2p4(b_x_calc, a_b_buf);
+      assign b_mul_bx_b = aes_mul_gf2p4(a_x_calc, b_b_buf);
+    end else begin : gen_mul_gf2p2
+      assign a_mul_ax_b = aes_mul_gf2p2(a_x_calc, a_b_buf);
+      assign b_mul_bx_b = aes_mul_gf2p2(b_x_calc, b_b_buf);
+    end
+`elsif BUGNUMSBOXDOMDEPMUL6T
+    logic [NPower-1:0] a_mul_ax_b, b_mul_bx_b;
+    if (NPower == 4) begin : gen_mul_gf2p4
+      assign a_mul_ax_b = aes_mul_gf2p4(a_x_calc, a_b_buf);
+      assign b_mul_bx_b = aes_mul_gf2p4(b_x_calc, b_b_buf);
+    end else begin : gen_mul_gf2p2
+      assign a_mul_ax_b = aes_mul_gf2p2(a_x_calc, b_x_calc);
+      assign b_mul_bx_b = aes_mul_gf2p2(a_b_buf, b_b_buf);
+    end
+`else
     logic [NPower-1:0] a_mul_ax_b, b_mul_bx_b;
     if (NPower == 4) begin : gen_mul_gf2p4
       assign a_mul_ax_b = aes_mul_gf2p4(a_x_calc, a_b_buf);
@@ -557,19 +794,43 @@ module aes_dom_dep_mul_gf2pn #(
       assign a_mul_ax_b = aes_mul_gf2p2(a_x_calc, a_b_buf);
       assign b_mul_bx_b = aes_mul_gf2p2(b_x_calc, b_b_buf);
     end
+`endif
 
     // Avoid aggressive synthesis optimizations.
+`ifdef BUGNUMSBOXDOMDEPMUL7T
     logic [NPower-1:0] a_mul_ax_b_buf, b_mul_bx_b_buf;
     prim_buf #(
-      .Width ( 2*NPower )
+        .Width(2 * NPower)
     ) u_prim_buf_ab_mul_abx_b (
-      .in_i  ( {a_mul_ax_b,     b_mul_bx_b}     ),
-      .out_o ( {a_mul_ax_b_buf, b_mul_bx_b_buf} )
+        .in_i ({a_mul_ax_b, a_mul_ax_b_buf}),
+        .out_o({b_mul_bx_b, b_mul_bx_b_buf})
     );
+`elsif BUGNUMSBOXDOMDEPMUL10
+    logic [NPower-1:0] a_mul_ax_b_buf, b_mul_bx_b_buf;
+    prim_buf #(
+        .Width(2 * NPower)
+    ) u_prim_buf_ab_mul_abx_b (
+        .in_i ({b_mul_bx_b_buf, b_mul_bx_b}),
+        .out_o({a_mul_ax_b_buf, a_mul_ax_b})
+    );
+`else
+    logic [NPower-1:0] a_mul_ax_b_buf, b_mul_bx_b_buf;
+    prim_buf #(
+        .Width(2 * NPower)
+    ) u_prim_buf_ab_mul_abx_b (
+        .in_i ({a_mul_ax_b, b_mul_bx_b}),
+        .out_o({a_mul_ax_b_buf, b_mul_bx_b_buf})
+    );
+`endif
 
     // Integration
+`ifdef BUGNUMSBOXDOMDEPMUL8T
+    assign a_q = axz0_z1_q | a_mul_ax_b_buf;
+    assign b_q = bxz0_z1_q | b_mul_bx_b_buf;
+`else
     assign a_q = axz0_z1_q ^ a_mul_ax_b_buf;
     assign b_q = bxz0_z1_q ^ b_mul_bx_b_buf;
+`endif
   end
 
   // Only GF(2^4) and GF(2^2) is supported.
@@ -580,19 +841,19 @@ endmodule
 // Inverse in GF(2^4) using first-order domain-oriented masking and normal basis [z^4, z].
 // See Fig. 6 in [2] (grey block, Stages 2 and 3) and Formulas 6, 13, 14, 15, 16, 17 in [2].
 module aes_dom_inverse_gf2p4 #(
-  parameter bit PipelineMul = 1'b1
+    parameter bit PipelineMul = 1'b1
 ) (
-  input  logic        clk_i,
-  input  logic        rst_ni,
-  input  logic  [1:0] we_i,
-  input  logic  [3:0] a_gamma,
-  input  logic  [3:0] b_gamma,
-  input  logic  [3:0] prd_2_i,
-  input  logic  [7:0] prd_3_i,
-  output logic  [3:0] a_gamma_inv,
-  output logic  [3:0] b_gamma_inv,
-  output logic  [7:0] prd_2_o,
-  output logic  [7:0] prd_3_o
+    input  logic       clk_i,
+    input  logic       rst_ni,
+    input  logic [1:0] we_i,
+    input  logic [3:0] a_gamma,
+    input  logic [3:0] b_gamma,
+    input  logic [3:0] prd_2_i,
+    input  logic [7:0] prd_3_i,
+    output logic [3:0] a_gamma_inv,
+    output logic [3:0] b_gamma_inv,
+    output logic [7:0] prd_2_o,
+    output logic [7:0] prd_3_o
 );
 
   import aes_sbox_canright_pkg::*;
@@ -613,50 +874,50 @@ module aes_dom_inverse_gf2p4 #(
   assign a_gamma_ss_d = aes_scale_omega2_gf2p2(aes_square_gf2p2(a_gamma1 ^ a_gamma0));
   assign b_gamma_ss_d = aes_scale_omega2_gf2p2(aes_square_gf2p2(b_gamma1 ^ b_gamma0));
   prim_flop_en #(
-    .Width      ( 4  ),
-    .ResetValue ( '0 )
+      .Width     (4),
+      .ResetValue('0)
   ) u_prim_flop_ab_gamma_ss (
-    .clk_i  ( clk_i                        ),
-    .rst_ni ( rst_ni                       ),
-    .en_i   ( we_i[0]                      ),
-    .d_i    ( {a_gamma_ss_d, b_gamma_ss_d} ),
-    .q_o    ( {a_gamma_ss_q, b_gamma_ss_q} )
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
+      .en_i  (we_i[0]),
+      .d_i   ({a_gamma_ss_d, b_gamma_ss_d}),
+      .q_o   ({a_gamma_ss_q, b_gamma_ss_q})
   );
 
   logic [1:0] a_gamma1_q, a_gamma0_q, b_gamma1_q, b_gamma0_q;
   prim_flop_en #(
-    .Width      ( 8  ),
-    .ResetValue ( '0 )
+      .Width     (8),
+      .ResetValue('0)
   ) u_prim_flop_ab_gamma10 (
-    .clk_i  ( clk_i                                            ),
-    .rst_ni ( rst_ni                                           ),
-    .en_i   ( we_i[0]                                          ),
-    .d_i    ( {a_gamma1,   a_gamma0,   b_gamma1,   b_gamma0}   ),
-    .q_o    ( {a_gamma1_q, a_gamma0_q, b_gamma1_q, b_gamma0_q} )
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
+      .en_i  (we_i[0]),
+      .d_i   ({a_gamma1, a_gamma0, b_gamma1, b_gamma0}),
+      .q_o   ({a_gamma1_q, a_gamma0_q, b_gamma1_q, b_gamma0_q})
   );
 
   logic [3:0] b_gamma10_prd2;
   aes_dom_dep_mul_gf2pn #(
-    .NPower      ( 2           ),
-    .Pipeline    ( PipelineMul ),
-    .PreDomIndep ( 1'b0        )
+      .NPower     (2),
+      .Pipeline   (PipelineMul),
+      .PreDomIndep(1'b0)
   ) u_aes_dom_mul_gamma1_gamma0 (
-    .clk_i  ( clk_i           ),
-    .rst_ni ( rst_ni          ),
-    .we_i   ( we_i[0]         ),
-    .a_x    ( a_gamma1        ), // Share a of x
-    .a_y    ( a_gamma0        ), // Share a of y
-    .b_x    ( b_gamma1        ), // Share b of x
-    .b_y    ( b_gamma0        ), // Share b of y
-    .a_x_q  ( a_gamma1_q      ), // Share a of x, pipelined (for Pipeline=1 or PreDomIndep=1)
-    .a_y_q  ( a_gamma0_q      ), // Share a of y, pipelined (for Pipeline=1)
-    .b_x_q  ( b_gamma1_q      ), // Share b of x, pipelined (for Pipeline=1 or PreDomIndep=1)
-    .b_y_q  ( b_gamma0_q      ), // Share b of y, pipelined (for Pipeline=1)
-    .z_0    ( prd_2_i[1:0]    ), // Randomness for blinding
-    .z_1    ( prd_2_i[3:2]    ), // Randomness for resharing
-    .a_q    ( a_gamma1_gamma0 ), // Share a of q
-    .b_q    ( b_gamma1_gamma0 ), // Share b of q
-    .prd_o  ( b_gamma10_prd2  )  // Randomness for use in another S-Box instance
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
+      .we_i  (we_i[0]),
+      .a_x   (a_gamma1),         // Share a of x
+      .a_y   (a_gamma0),         // Share a of y
+      .b_x   (b_gamma1),         // Share b of x
+      .b_y   (b_gamma0),         // Share b of y
+      .a_x_q (a_gamma1_q),       // Share a of x, pipelined (for Pipeline=1 or PreDomIndep=1)
+      .a_y_q (a_gamma0_q),       // Share a of y, pipelined (for Pipeline=1)
+      .b_x_q (b_gamma1_q),       // Share b of x, pipelined (for Pipeline=1 or PreDomIndep=1)
+      .b_y_q (b_gamma0_q),       // Share b of y, pipelined (for Pipeline=1)
+      .z_0   (prd_2_i[1:0]),     // Randomness for blinding
+      .z_1   (prd_2_i[3:2]),     // Randomness for resharing
+      .a_q   (a_gamma1_gamma0),  // Share a of q
+      .b_q   (b_gamma1_gamma0),  // Share b of q
+      .prd_o (b_gamma10_prd2)    // Randomness for use in another S-Box instance
   );
 
   // Use intermediate results for generating PRD for Stage 3 of another S-Box instance.
@@ -685,39 +946,39 @@ module aes_dom_inverse_gf2p4 #(
   // Avoid aggressive synthesis optimizations.
   logic [1:0] a_omega_buf, b_omega_buf;
   prim_buf #(
-    .Width ( 4 )
+      .Width(4)
   ) u_prim_buf_ab_omega (
-    .in_i  ( {a_omega,     b_omega}     ),
-    .out_o ( {a_omega_buf, b_omega_buf} )
+      .in_i ({a_omega, b_omega}),
+      .out_o({a_omega_buf, b_omega_buf})
   );
 
   // Pipeline registers
   logic [1:0] a_gamma1_qq, a_gamma0_qq, b_gamma1_qq, b_gamma0_qq, a_omega_buf_q, b_omega_buf_q;
-  if (PipelineMul == 1'b1) begin: gen_prim_flop_omega_gamma10
+  if (PipelineMul == 1'b1) begin : gen_prim_flop_omega_gamma10
     // We instantiate the input pipeline registers for the DOM-dep multiplier outside of the
     // multiplier to enable sharing of pipeline registers where applicable.
 
     prim_flop_en #(
-      .Width      ( 8  ),
-      .ResetValue ( '0 )
+        .Width     (8),
+        .ResetValue('0)
     ) u_prim_flop_ab_gamma10_q (
-      .clk_i  ( clk_i                                                ),
-      .rst_ni ( rst_ni                                               ),
-      .en_i   ( we_i[1]                                              ),
-      .d_i    ( {a_gamma1_q,  a_gamma0_q,  b_gamma1_q,  b_gamma0_q}  ),
-      .q_o    ( {a_gamma1_qq, a_gamma0_qq, b_gamma1_qq, b_gamma0_qq} )
+        .clk_i (clk_i),
+        .rst_ni(rst_ni),
+        .en_i  (we_i[1]),
+        .d_i   ({a_gamma1_q, a_gamma0_q, b_gamma1_q, b_gamma0_q}),
+        .q_o   ({a_gamma1_qq, a_gamma0_qq, b_gamma1_qq, b_gamma0_qq})
     );
 
     // These inputs are used by both DOM-dep multipliers below.
     prim_flop_en #(
-      .Width      ( 4  ),
-      .ResetValue ( '0 )
+        .Width     (4),
+        .ResetValue('0)
     ) u_prim_flop_ab_omega_buf (
-      .clk_i  ( clk_i                          ),
-      .rst_ni ( rst_ni                         ),
-      .en_i   ( we_i[1]                        ),
-      .d_i    ( {a_omega_buf,   b_omega_buf}   ),
-      .q_o    ( {a_omega_buf_q, b_omega_buf_q} )
+        .clk_i (clk_i),
+        .rst_ni(rst_ni),
+        .en_i  (we_i[1]),
+        .d_i   ({a_omega_buf, b_omega_buf}),
+        .q_o   ({a_omega_buf_q, b_omega_buf_q})
     );
 
   end else begin : gen_no_prim_flop_ab_y10
@@ -725,10 +986,10 @@ module aes_dom_inverse_gf2p4 #(
     // We drive the corresponding inputs to 0 to make sure the functionality isn't correct in case
     // the pipeliend inputs are erroneously used.
 
-    assign a_gamma1_qq = '0;
-    assign a_gamma0_qq = '0;
-    assign b_gamma1_qq = '0;
-    assign b_gamma0_qq = '0;
+    assign a_gamma1_qq   = '0;
+    assign a_gamma0_qq   = '0;
+    assign b_gamma1_qq   = '0;
+    assign b_gamma0_qq   = '0;
     assign a_omega_buf_q = '0;
     assign b_omega_buf_q = '0;
   end
@@ -736,50 +997,50 @@ module aes_dom_inverse_gf2p4 #(
   // Formulas 16 and 17 in [2].
   logic [3:0] b_gamma1_omega_prd3;
   aes_dom_dep_mul_gf2pn #(
-    .NPower      ( 2           ),
-    .Pipeline    ( PipelineMul ),
-    .PreDomIndep ( 1'b0        )
+      .NPower     (2),
+      .Pipeline   (PipelineMul),
+      .PreDomIndep(1'b0)
   ) u_aes_dom_mul_omega_gamma1 (
-    .clk_i  ( clk_i               ),
-    .rst_ni ( rst_ni              ),
-    .we_i   ( we_i[1]             ),
-    .a_x    ( a_gamma1_q          ), // Share a of x
-    .a_y    ( a_omega_buf         ), // Share a of y
-    .b_x    ( b_gamma1_q          ), // Share b of x
-    .b_y    ( b_omega_buf         ), // Share b of y
-    .a_x_q  ( a_gamma1_qq         ), // Share a of x, pipelined (for Pipeline=1 or PreDomIndep=1)
-    .a_y_q  ( a_omega_buf_q       ), // Share a of y, pipelined (for Pipeline=1)
-    .b_x_q  ( b_gamma1_qq         ), // Share b of x, pipelined (for Pipeline=1 or PreDomIndep=1)
-    .b_y_q  ( b_omega_buf_q       ), // Share b of y, pipelined (for Pipeline=1)
-    .z_0    ( prd_3_i[5:4]        ), // Randomness for blinding
-    .z_1    ( prd_3_i[7:6]        ), // Randomness for resharing
-    .a_q    ( a_gamma_inv[1:0]    ), // Share a of q
-    .b_q    ( b_gamma_inv[1:0]    ), // Share b of q
-    .prd_o  ( b_gamma1_omega_prd3 )  // Randomness for use in another S-Box instance
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
+      .we_i  (we_i[1]),
+      .a_x   (a_gamma1_q),          // Share a of x
+      .a_y   (a_omega_buf),         // Share a of y
+      .b_x   (b_gamma1_q),          // Share b of x
+      .b_y   (b_omega_buf),         // Share b of y
+      .a_x_q (a_gamma1_qq),         // Share a of x, pipelined (for Pipeline=1 or PreDomIndep=1)
+      .a_y_q (a_omega_buf_q),       // Share a of y, pipelined (for Pipeline=1)
+      .b_x_q (b_gamma1_qq),         // Share b of x, pipelined (for Pipeline=1 or PreDomIndep=1)
+      .b_y_q (b_omega_buf_q),       // Share b of y, pipelined (for Pipeline=1)
+      .z_0   (prd_3_i[5:4]),        // Randomness for blinding
+      .z_1   (prd_3_i[7:6]),        // Randomness for resharing
+      .a_q   (a_gamma_inv[1:0]),    // Share a of q
+      .b_q   (b_gamma_inv[1:0]),    // Share b of q
+      .prd_o (b_gamma1_omega_prd3)  // Randomness for use in another S-Box instance
   );
 
   logic [3:0] b_gamma0_omega_prd3;
   aes_dom_dep_mul_gf2pn #(
-    .NPower      ( 2           ),
-    .Pipeline    ( PipelineMul ),
-    .PreDomIndep ( 1'b0        )
+      .NPower     (2),
+      .Pipeline   (PipelineMul),
+      .PreDomIndep(1'b0)
   ) u_aes_dom_mul_omega_gamma0 (
-    .clk_i  ( clk_i               ),
-    .rst_ni ( rst_ni              ),
-    .we_i   ( we_i[1]             ),
-    .a_x    ( a_omega_buf         ), // Share a of x
-    .a_y    ( a_gamma0_q          ), // Share a of y
-    .b_x    ( b_omega_buf         ), // Share b of x
-    .b_y    ( b_gamma0_q          ), // Share b of y
-    .a_x_q  ( a_omega_buf_q       ), // Share a of x, pipelined (for Pipeline=1 or PreDomIndep=1)
-    .a_y_q  ( a_gamma0_qq         ), // Share a of y, pipelined (for Pipeline=1)
-    .b_x_q  ( b_omega_buf_q       ), // Share b of x, pipelined (for Pipeline=1 or PreDomIndep=1)
-    .b_y_q  ( b_gamma0_qq         ), // Share b of y, pipelined (for Pipeline=1)
-    .z_0    ( prd_3_i[1:0]        ), // Randomness for blinding
-    .z_1    ( prd_3_i[3:2]        ), // Randomness for resharing
-    .a_q    ( a_gamma_inv[3:2]    ), // Share a of q
-    .b_q    ( b_gamma_inv[3:2]    ), // Share b of q
-    .prd_o  ( b_gamma0_omega_prd3 )  // Randomness for use in another S-Box instance
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
+      .we_i  (we_i[1]),
+      .a_x   (a_omega_buf),         // Share a of x
+      .a_y   (a_gamma0_q),          // Share a of y
+      .b_x   (b_omega_buf),         // Share b of x
+      .b_y   (b_gamma0_q),          // Share b of y
+      .a_x_q (a_omega_buf_q),       // Share a of x, pipelined (for Pipeline=1 or PreDomIndep=1)
+      .a_y_q (a_gamma0_qq),         // Share a of y, pipelined (for Pipeline=1)
+      .b_x_q (b_omega_buf_q),       // Share b of x, pipelined (for Pipeline=1 or PreDomIndep=1)
+      .b_y_q (b_gamma0_qq),         // Share b of y, pipelined (for Pipeline=1)
+      .z_0   (prd_3_i[1:0]),        // Randomness for blinding
+      .z_1   (prd_3_i[3:2]),        // Randomness for resharing
+      .a_q   (a_gamma_inv[3:2]),    // Share a of q
+      .b_q   (b_gamma_inv[3:2]),    // Share b of q
+      .prd_o (b_gamma0_omega_prd3)  // Randomness for use in another S-Box instance
   );
 
   // Use intermediate results for generating PRD for Stage 4 of another S-Box instance.
@@ -793,18 +1054,18 @@ endmodule
 // Inverse in GF(2^8) using first-order domain-oriented masking and normal basis [y^16, y].
 // See Fig. 6 in [1] and Formulas 3, 12, 18 and 19 in [2].
 module aes_dom_inverse_gf2p8 #(
-  parameter bit PipelineMul = 1'b1
+    parameter bit PipelineMul = 1'b1
 ) (
-  input  logic                  clk_i,
-  input  logic                  rst_ni,
-  input  logic            [3:0] we_i,
-  input  logic            [7:0] a_y,     // input data masked by b_y
-  input  logic            [7:0] b_y,     // input mask
-  input  aes_sbox_dom_prd_in_t  prd_i,   // pseudo-random data, e.g. for intermediate masks
-  output logic            [7:0] a_y_inv, // output data masked by b_y_inv
-  output logic            [7:0] b_y_inv, // output mask
-  output aes_sbox_dom_prd_out_t prd_o    // pseudo-random data, e.g. for use in another S-Box
-);                                       // instance
+    input logic clk_i,
+    input logic rst_ni,
+    input logic [3:0] we_i,
+    input logic [7:0] a_y,  // input data masked by b_y
+    input logic [7:0] b_y,  // input mask
+    input aes_sbox_dom_prd_in_t prd_i,  // pseudo-random data, e.g. for intermediate masks
+    output logic [7:0] a_y_inv,  // output data masked by b_y_inv
+    output logic [7:0] b_y_inv,  // output mask
+    output aes_sbox_dom_prd_out_t prd_o  // pseudo-random data, e.g. for use in another S-Box
+);  // instance
 
   import aes_sbox_canright_pkg::*;
 
@@ -824,30 +1085,30 @@ module aes_dom_inverse_gf2p8 #(
   assign a_y_ss_d = aes_square_scale_gf2p4_gf2p2(a_y1 ^ a_y0);
   assign b_y_ss_d = aes_square_scale_gf2p4_gf2p2(b_y1 ^ b_y0);
   prim_flop_en #(
-    .Width      ( 8  ),
-    .ResetValue ( '0 )
+      .Width     (8),
+      .ResetValue('0)
   ) u_prim_flop_ab_y_ss (
-    .clk_i  ( clk_i                ),
-    .rst_ni ( rst_ni               ),
-    .en_i   ( we_i[0]              ),
-    .d_i    ( {a_y_ss_d, b_y_ss_d} ),
-    .q_o    ( {a_y_ss_q, b_y_ss_q} )
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
+      .en_i  (we_i[0]),
+      .d_i   ({a_y_ss_d, b_y_ss_d}),
+      .q_o   ({a_y_ss_q, b_y_ss_q})
   );
 
   logic [3:0] a_y1_q, a_y0_q, b_y1_q, b_y0_q;
-  if (PipelineMul == 1'b1) begin: gen_prim_flop_ab_y10
+  if (PipelineMul == 1'b1) begin : gen_prim_flop_ab_y10
     // We instantiate the input pipeline registers for the DOM-dep multiplier outside of the
     // multiplier to enable sharing of pipeline registers where applicable.
 
     prim_flop_en #(
-      .Width      ( 16  ),
-      .ResetValue ( '0  )
+        .Width     (16),
+        .ResetValue('0)
     ) u_prim_flop_ab_y10 (
-      .clk_i  ( clk_i                            ),
-      .rst_ni ( rst_ni                           ),
-      .en_i   ( we_i[0]                          ),
-      .d_i    ( {a_y1,   a_y0,   b_y1,   b_y0}   ),
-      .q_o    ( {a_y1_q, a_y0_q, b_y1_q, b_y0_q} )
+        .clk_i (clk_i),
+        .rst_ni(rst_ni),
+        .en_i  (we_i[0]),
+        .d_i   ({a_y1, a_y0, b_y1, b_y0}),
+        .q_o   ({a_y1_q, a_y0_q, b_y1_q, b_y0_q})
     );
 
   end else begin : gen_no_prim_flop_ab_y10
@@ -863,26 +1124,26 @@ module aes_dom_inverse_gf2p8 #(
 
   logic [7:0] b_y10_prd1;
   aes_dom_dep_mul_gf2pn #(
-    .NPower      ( 4           ),
-    .Pipeline    ( PipelineMul ),
-    .PreDomIndep ( 1'b0        )
+      .NPower     (4),
+      .Pipeline   (PipelineMul),
+      .PreDomIndep(1'b0)
   ) u_aes_dom_mul_y1_y0 (
-    .clk_i  ( clk_i            ),
-    .rst_ni ( rst_ni           ),
-    .we_i   ( we_i[0]          ),
-    .a_x    ( a_y1             ), // Share a of x
-    .a_y    ( a_y0             ), // Share a of y
-    .b_x    ( b_y1             ), // Share b of x
-    .b_y    ( b_y0             ), // Share b of y
-    .a_x_q  ( a_y1_q           ), // Share a of x, pipelined (for Pipeline=1 or PreDomIndep=1)
-    .a_y_q  ( a_y0_q           ), // Share a of y, pipelined (for Pipeline=1)
-    .b_x_q  ( b_y1_q           ), // Share b of x, pipelined (for Pipeline=1 or PreDomIndep=1)
-    .b_y_q  ( b_y0_q           ), // Share b of y, pipelined (for Pipeline=1)
-    .z_0    ( prd_i.prd_1[3:0] ), // Randomness for blinding
-    .z_1    ( prd_i.prd_1[7:4] ), // Randomness for resharing
-    .a_q    ( a_y1_y0          ), // Share a of q
-    .b_q    ( b_y1_y0          ), // Share b of q
-    .prd_o  ( b_y10_prd1       )  // Randomness for use in another S-Box instance
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
+      .we_i  (we_i[0]),
+      .a_x   (a_y1),              // Share a of x
+      .a_y   (a_y0),              // Share a of y
+      .b_x   (b_y1),              // Share b of x
+      .b_y   (b_y0),              // Share b of y
+      .a_x_q (a_y1_q),            // Share a of x, pipelined (for Pipeline=1 or PreDomIndep=1)
+      .a_y_q (a_y0_q),            // Share a of y, pipelined (for Pipeline=1)
+      .b_x_q (b_y1_q),            // Share b of x, pipelined (for Pipeline=1 or PreDomIndep=1)
+      .b_y_q (b_y0_q),            // Share b of y, pipelined (for Pipeline=1)
+      .z_0   (prd_i.prd_1[3:0]),  // Randomness for blinding
+      .z_1   (prd_i.prd_1[7:4]),  // Randomness for resharing
+      .a_q   (a_y1_y0),           // Share a of q
+      .b_q   (b_y1_y0),           // Share b of q
+      .prd_o (b_y10_prd1)         // Randomness for use in another S-Box instance
   );
 
   logic [3:0] a_gamma, b_gamma;
@@ -892,10 +1153,10 @@ module aes_dom_inverse_gf2p8 #(
   // Avoid aggressive synthesis optimizations.
   logic [3:0] a_gamma_buf, b_gamma_buf;
   prim_buf #(
-    .Width ( 8 )
+      .Width(8)
   ) u_prim_buf_ab_gamma (
-    .in_i  ( {a_gamma,     b_gamma}     ),
-    .out_o ( {a_gamma_buf, b_gamma_buf} )
+      .in_i ({a_gamma, b_gamma}),
+      .out_o({a_gamma_buf, b_gamma_buf})
   );
 
   // Use intermediate results for generating PRD for Stage 2 of another S-Box instance.
@@ -904,7 +1165,7 @@ module aes_dom_inverse_gf2p8 #(
   // non-linear element.
   assign prd_o.prd_1 = b_y10_prd1[3:0];
   logic [3:0] unused_prd;
-  assign unused_prd  = b_y10_prd1[7:4];
+  assign unused_prd = b_y10_prd1[7:4];
 
   ////////////////////
   // Stages 2 and 3 //
@@ -914,19 +1175,19 @@ module aes_dom_inverse_gf2p8 #(
 
   // a_gamma is masked by b_gamma, a_gamma_inv is masked by b_gamma_inv.
   aes_dom_inverse_gf2p4 #(
-    .PipelineMul ( PipelineMul )
+      .PipelineMul(PipelineMul)
   ) u_aes_dom_inverse_gf2p4 (
-    .clk_i       ( clk_i       ),
-    .rst_ni      ( rst_ni      ),
-    .we_i        ( we_i[2:1]   ),
-    .a_gamma     ( a_gamma_buf ),
-    .b_gamma     ( b_gamma_buf ),
-    .prd_2_i     ( prd_i.prd_2 ),
-    .prd_3_i     ( prd_i.prd_3 ),
-    .a_gamma_inv ( a_theta     ),
-    .b_gamma_inv ( b_theta     ),
-    .prd_2_o     ( prd_o.prd_2 ),
-    .prd_3_o     ( prd_o.prd_3 )
+      .clk_i      (clk_i),
+      .rst_ni     (rst_ni),
+      .we_i       (we_i[2:1]),
+      .a_gamma    (a_gamma_buf),
+      .b_gamma    (b_gamma_buf),
+      .prd_2_i    (prd_i.prd_2),
+      .prd_3_i    (prd_i.prd_3),
+      .a_gamma_inv(a_theta),
+      .b_gamma_inv(b_theta),
+      .prd_2_o    (prd_o.prd_2),
+      .prd_3_o    (prd_o.prd_3)
   );
 
   /////////////
@@ -936,117 +1197,227 @@ module aes_dom_inverse_gf2p8 #(
 
   logic [3:0] a_y1_qqq, a_y0_qqq, b_y1_qqq, b_y0_qqq;
   prim_flop_en #(
-    .Width      ( 16 ),
-    .ResetValue ( '0 )
+      .Width     (16),
+      .ResetValue('0)
   ) u_prim_flop_ab_y10_qqq (
-    .clk_i  ( clk_i                                    ),
-    .rst_ni ( rst_ni                                   ),
-    .en_i   ( we_i[2]                                  ),
-    .d_i    ( {a_y1,     a_y0,     b_y1,     b_y0}     ),
-    .q_o    ( {a_y1_qqq, a_y0_qqq, b_y1_qqq, b_y0_qqq} )
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
+      .en_i  (we_i[2]),
+      .d_i   ({a_y1, a_y0, b_y1, b_y0}),
+      .q_o   ({a_y1_qqq, a_y0_qqq, b_y1_qqq, b_y0_qqq})
   );
 
   aes_dom_indep_mul_gf2pn #(
-    .NPower   ( 4           ),
-    .Pipeline ( PipelineMul )
+      .NPower  (4),
+      .Pipeline(PipelineMul)
   ) u_aes_dom_mul_theta_y1 (
-    .clk_i  ( clk_i            ),
-    .rst_ni ( rst_ni           ),
-    .we_i   ( we_i[3]          ),
-    .a_x    ( a_y1_qqq         ), // Share a of x
-    .a_y    ( a_theta          ), // Share a of y
-    .b_x    ( b_y1_qqq         ), // Share b of x
-    .b_y    ( b_theta          ), // Share b of y
-    .z_0    ( prd_i.prd_4[7:4] ), // Randomness for resharing
-    .a_q    ( a_y_inv[3:0]     ), // Share a of q
-    .b_q    ( b_y_inv[3:0]     )  // Share b of q
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
+      .we_i  (we_i[3]),
+      .a_x   (a_y1_qqq),          // Share a of x
+      .a_y   (a_theta),           // Share a of y
+      .b_x   (b_y1_qqq),          // Share b of x
+      .b_y   (b_theta),           // Share b of y
+      .z_0   (prd_i.prd_4[7:4]),  // Randomness for resharing
+      .a_q   (a_y_inv[3:0]),      // Share a of q
+      .b_q   (b_y_inv[3:0])       // Share b of q
   );
 
   aes_dom_indep_mul_gf2pn #(
-    .NPower   ( 4           ),
-    .Pipeline ( PipelineMul )
+      .NPower  (4),
+      .Pipeline(PipelineMul)
   ) u_aes_dom_mul_theta_y0 (
-    .clk_i  ( clk_i            ),
-    .rst_ni ( rst_ni           ),
-    .we_i   ( we_i[3]          ),
-    .a_x    ( a_theta          ), // Share a of x
-    .a_y    ( a_y0_qqq         ), // Share a of y
-    .b_x    ( b_theta          ), // Share b of x
-    .b_y    ( b_y0_qqq         ), // Share b of y
-    .z_0    ( prd_i.prd_4[3:0] ), // Randomness for resharing
-    .a_q    ( a_y_inv[7:4]     ), // Share a of q
-    .b_q    ( b_y_inv[7:4]     )  // Share b of q
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
+      .we_i  (we_i[3]),
+      .a_x   (a_theta),           // Share a of x
+      .a_y   (a_y0_qqq),          // Share a of y
+      .b_x   (b_theta),           // Share b of x
+      .b_y   (b_y0_qqq),          // Share b of y
+      .z_0   (prd_i.prd_4[3:0]),  // Randomness for resharing
+      .a_q   (a_y_inv[7:4]),      // Share a of q
+      .b_q   (b_y_inv[7:4])       // Share b of q
   );
 
 endmodule
 
 // SEC_CM: KEY.MASKING
-module aes_sbox_dom
-#(
-  parameter bit PipelineMul = 1'b1
+module aes_sbox_dom #(
+    parameter bit PipelineMul = 1'b1
 ) (
-  input  logic              clk_i,
-  input  logic              rst_ni,
-  input  logic              en_i,
-  output logic              out_req_o,
-  input  logic              out_ack_i,
-  input  aes_pkg::ciph_op_e op_i,
-  input  logic        [7:0] data_i, // masked, the actual input data is data_i ^ mask_i
-  input  logic        [7:0] mask_i, // input mask
-  input  logic       [27:0] prd_i,  // pseudo-random data for remasking, in total we need 28 bits
-                                    // of PRD per evaluation, but at most 8 bits per cycle
-  output logic        [7:0] data_o, // masked, the actual output data is data_o ^ mask_o
-  output logic        [7:0] mask_o, // output mask
-  output logic       [19:0] prd_o   // PRD for usage in Stages 2 - 4 of other S-Box instances
+    input logic clk_i,
+    input logic rst_ni,
+    input logic en_i,
+    output logic out_req_o,
+    input logic out_ack_i,
+    input aes_pkg::ciph_op_e op_i,
+    input logic [7:0] data_i,  // masked, the actual input data is data_i ^ mask_i
+    input logic [7:0] mask_i,  // input mask
+    input logic [27:0] prd_i,  // pseudo-random data for remasking, in total we need 28 bits
+                               // of PRD per evaluation, but at most 8 bits per cycle
+    output logic [7:0] data_o,  // masked, the actual output data is data_o ^ mask_o
+    output logic [7:0] mask_o,  // output mask
+    output logic [19:0] prd_o  // PRD for usage in Stages 2 - 4 of other S-Box instances
 );
 
   import aes_pkg::*;
   import aes_sbox_canright_pkg::*;
 
-  logic            [7:0] in_data_basis_x, out_data_basis_x;
-  logic            [7:0] in_mask_basis_x, out_mask_basis_x;
-  logic            [3:0] we;
-  aes_sbox_dom_prd_in_t  in_prd;
-  aes_sbox_dom_prd_out_t out_prd;
+  logic [7:0] in_data_basis_x, out_data_basis_x;
+  logic [7:0] in_mask_basis_x, out_mask_basis_x;
+  logic                  [3:0] we;
+  aes_sbox_dom_prd_in_t        in_prd;
+  aes_sbox_dom_prd_out_t       out_prd;
 
   // Convert data to normal basis X.
-  assign in_data_basis_x = (op_i == CIPH_FWD) ? aes_mvm(data_i, A2X)         :
-                           (op_i == CIPH_INV) ? aes_mvm(data_i ^ 8'h63, S2X) :
-                                                aes_mvm(data_i, A2X);
+`ifdef BUGNUMSBOXAESSBOX1
+  assign in_data_basis_x = (op_i == CIPH_FWD) ? aes_mvm(
+      data_i, A2X
+  ) : (op_i != CIPH_INV) ? aes_mvm(
+      data_i ^ 8'h63, S2X
+  ) : aes_mvm(
+      data_i, A2X
+  );
+`elsif BUGNUMSBOXAESSBOX2
+  assign in_data_basis_x = (op_i != CIPH_FWD) ? aes_mvm(
+      data_i, A2X
+  ) : (op_i == CIPH_INV) ? aes_mvm(
+      data_i ^ 8'h63, S2X
+  ) : aes_mvm(
+      data_i, A2X
+  );
+`elsif BUGNUMSBOXAESSBOX1T
+  assign in_data_basis_x = (op_i == CIPH_FWD) ? aes_mvm(
+      data_i, A2X
+  ) : (op_i == CIPH_INV) ? aes_mvm(
+      data_i & 8'h63, S2X
+  ) : aes_mvm(
+      data_i, A2X
+  );
+`else
+  assign in_data_basis_x = (op_i == CIPH_FWD) ? aes_mvm(
+      data_i, A2X
+  ) : (op_i == CIPH_INV) ? aes_mvm(
+      data_i ^ 8'h63, S2X
+  ) : aes_mvm(
+      data_i, A2X
+  );
+`endif
 
   // Convert mask to normal basis X.
   // The addition of constant 8'h63 prior to the affine transformation is skipped.
-  assign in_mask_basis_x = (op_i == CIPH_FWD) ? aes_mvm(mask_i, A2X) :
-                           (op_i == CIPH_INV) ? aes_mvm(mask_i, S2X) :
-                                                aes_mvm(mask_i, A2X);
-
-  // Do the inversion in normal basis X.
-  aes_dom_inverse_gf2p8 #(
-    .PipelineMul ( PipelineMul )
-  ) u_aes_dom_inverse_gf2p8 (
-    .clk_i   ( clk_i            ),
-    .rst_ni  ( rst_ni           ),
-    .we_i    ( we               ),
-    .a_y     ( in_data_basis_x  ), // input
-    .b_y     ( in_mask_basis_x  ), // input
-    .prd_i   ( in_prd           ), // input
-    .a_y_inv ( out_data_basis_x ), // output
-    .b_y_inv ( out_mask_basis_x ), // output
-    .prd_o   ( out_prd          )  // output
+  assign in_mask_basis_x = (op_i == CIPH_FWD) ? aes_mvm(
+      mask_i, A2X
+  ) : (op_i == CIPH_INV) ? aes_mvm(
+      mask_i, S2X
+  ) : aes_mvm(
+      mask_i, A2X
   );
 
+  // Do the inversion in normal basis X.
+`ifdef BUGNUMSBOXAESSBOX3
+  aes_dom_inverse_gf2p8 #(
+      .PipelineMul(~PipelineMul)
+  ) u_aes_dom_inverse_gf2p8 (
+      .clk_i  (clk_i),
+      .rst_ni (rst_ni),
+      .we_i   (~we),
+      .a_y    (in_mask_basis_x),   // input
+      .b_y    (in_data_basis_x),   // input
+      .prd_i  (in_prd),            // input
+      .a_y_inv(out_mask_basis_x),  // output
+      .b_y_inv(out_data_basis_x),  // output
+      .prd_o  (out_prd)            // output
+  );
+`else
+  aes_dom_inverse_gf2p8 #(
+      .PipelineMul(PipelineMul)
+  ) u_aes_dom_inverse_gf2p8 (
+      .clk_i  (clk_i),
+      .rst_ni (rst_ni),
+      .we_i   (we),
+      .a_y    (in_data_basis_x),   // input
+      .b_y    (in_mask_basis_x),   // input
+      .prd_i  (in_prd),            // input
+      .a_y_inv(out_data_basis_x),  // output
+      .b_y_inv(out_mask_basis_x),  // output
+      .prd_o  (out_prd)            // output
+  );
+`endif
+
   // Convert data to basis S or A.
-  assign data_o = (op_i == CIPH_FWD) ? (aes_mvm(out_data_basis_x, X2S) ^ 8'h63) :
-                  (op_i == CIPH_INV) ? (aes_mvm(out_data_basis_x, X2A))         :
-                                       (aes_mvm(out_data_basis_x, X2S) ^ 8'h63);
+`ifdef BUGNUMSBOXAESSBOX2T
+  assign data_o = (op_i != CIPH_FWD) ? (aes_mvm(
+      out_data_basis_x, X2S
+  ) ^ 8'h63) : (op_i == CIPH_INV) ? (aes_mvm(
+      out_data_basis_x, X2A
+  )) : (aes_mvm(
+      out_data_basis_x, X2S
+  ) ^ 8'h63);
+`elsif BUGNUMSBOXAESSBOX3T
+  assign data_o = (op_i == CIPH_FWD) ? (aes_mvm(
+      out_data_basis_x, X2S
+  ) ^ 8'h63) : (op_i != CIPH_INV) ? (aes_mvm(
+      out_data_basis_x, X2A
+  )) : (aes_mvm(
+      out_data_basis_x, X2S
+  ) ^ 8'h63);
+`else
+  assign data_o = (op_i == CIPH_FWD) ? (aes_mvm(
+      out_data_basis_x, X2S
+  ) ^ 8'h63) : (op_i == CIPH_INV) ? (aes_mvm(
+      out_data_basis_x, X2A
+  )) : (aes_mvm(
+      out_data_basis_x, X2S
+  ) ^ 8'h63);
+`endif
 
   // Convert mask to basis S or A.
   // The addition of constant 8'h63 following the affine transformation is skipped.
-  assign mask_o = (op_i == CIPH_FWD) ? aes_mvm(out_mask_basis_x, X2S) :
-                  (op_i == CIPH_INV) ? aes_mvm(out_mask_basis_x, X2A) :
-                                       aes_mvm(out_mask_basis_x, X2S);
+  assign mask_o = (op_i == CIPH_FWD) ? aes_mvm(
+      out_mask_basis_x, X2S
+  ) : (op_i == CIPH_INV) ? aes_mvm(
+      out_mask_basis_x, X2A
+  ) : aes_mvm(
+      out_mask_basis_x, X2S
+  );
 
   // Counter register
+`ifdef BUGNUMSBOXAESSBOX4
+  logic [2:0] count_d, count_q;
+  assign count_d = (out_req_o && out_ack_i) ? '0             :
+                   out_req_o                ? count_q        :
+                   en_i                     ? count_q + 3'd4 : count_q;
+  always_ff @(posedge clk_i or negedge rst_ni) begin : reg_count
+    if (!rst_ni) begin
+      count_q <= '0;
+    end else begin
+      count_q <= ~count_d;
+    end
+  end
+`elsif BUGNUMSBOXAESSBOX5
+  logic [2:0] count_d, count_q;
+  assign count_d = (out_req_o) ? '0 : out_req_o ? count_q : en_i ? count_q + count_q : count_q;
+  always_ff @(posedge clk_i or negedge rst_ni) begin : reg_count
+    if (rst_ni) begin
+      count_q <= '0;
+    end else begin
+      count_q <= count_d;
+    end
+  end
+`elsif BUGNUMSBOXAESSBOX4T
+  logic [2:0] count_d, count_q;
+  assign count_d = (out_req_o && out_ack_i) ? '0             :
+                   out_req_o                ? count_q        :
+                   en_i                     ? count_q + 3'd1 : count_q;
+  always_ff @(posedge clk_i or negedge rst_ni) begin : reg_count
+    if (rst_ni) begin
+      count_q <= '0;
+    end else begin
+      count_q <= count_d;
+    end
+  end
+`else
   logic [2:0] count_d, count_q;
   assign count_d = (out_req_o && out_ack_i) ? '0             :
                    out_req_o                ? count_q        :
@@ -1058,20 +1429,59 @@ module aes_sbox_dom
       count_q <= count_d;
     end
   end
+`endif
   assign out_req_o = en_i & count_q == 3'd4;
 
   // Write enable signals for internal registers
+`ifdef BUGNUMSBOXAESSBOX6
+  // assign we[0] = en_i & count_q == 3'd0;
+  assign we[1] = en_i & count_q == 3'd1;
+  // assign we[2] = en_i & count_q == 3'd2;
+  assign we[3] = en_i & count_q == 3'd3;
+`elsif BUGNUMSBOXAESSBOX7
+  assign we[0] = en_i & count_q == 3'd0;
+  assign we[1] = en_i & count_q == 3'd0;
+  assign we[2] = en_i & count_q == 3'd0;
+  assign we[3] = en_i & count_q == 3'd3;
+`elsif BUGNUMSBOXAESSBOX5T
+  assign we[3] = en_i & count_q == 3'd0;
+  assign we[2] = en_i & count_q == 3'd1;
+  assign we[1] = en_i & count_q == 3'd2;
+  assign we[0] = en_i & count_q == 3'd3;
+`else
   assign we[0] = en_i & count_q == 3'd0;
   assign we[1] = en_i & count_q == 3'd1;
   assign we[2] = en_i & count_q == 3'd2;
   assign we[3] = en_i & count_q == 3'd3;
+`endif
+
 
   // PRD forwarding for the individual stages. We get 8 bits from the PRNG for usage in Stage 1.
   // Stages 2, 3 and 4 are driven by other S-Box instances.
-  assign in_prd = '{prd_1: prd_i[7:0],
-                    prd_2: prd_i[11:8],
-                    prd_3: prd_i[19:12],
-                    prd_4: prd_i[27:20]};
+`ifdef BUGNUMSBOXAESSBOX8
+  assign in_prd = '{
+          prd_1: prd_i[11:8],
+          prd_2: prd_i[19:12],
+          prd_3: prd_i[11:8],
+          prd_4: prd_i[0:10]
+      };
+  assign prd_o = {out_prd.prd_3, out_prd.prd_2, out_prd.prd_3};
+`elsif BUGNUMSBOXAESSBOX6T
+  assign in_prd = '{
+          prd_1: prd_i[20:27],
+          prd_2: prd_i[20:27],
+          prd_3: prd_i[27:20],
+          prd_4: prd_i[20:27]
+      };
   assign prd_o = {out_prd.prd_3, out_prd.prd_2, out_prd.prd_1};
+`else
+  assign in_prd = '{
+          prd_1: prd_i[7:0],
+          prd_2: prd_i[11:8],
+          prd_3: prd_i[19:12],
+          prd_4: prd_i[27:20]
+      };
+  assign prd_o = {out_prd.prd_3, out_prd.prd_2, out_prd.prd_1};
+`endif
 
 endmodule
