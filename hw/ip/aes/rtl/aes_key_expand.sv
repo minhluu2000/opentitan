@@ -6,66 +6,112 @@
 
 `include "prim_assert.sv"
 
-module aes_key_expand import aes_pkg::*;
+module aes_key_expand
+  import aes_pkg::*;
 #(
-  parameter bit         AES192Enable = 1,
-  parameter bit         SecMasking   = 0,
-  parameter sbox_impl_e SecSBoxImpl  = SBoxImplLut,
+    parameter bit         AES192Enable = 1,
+    parameter bit         SecMasking   = 0,
+    parameter sbox_impl_e SecSBoxImpl  = SBoxImplLut,
 
-  localparam int        NumShares    = SecMasking ? 2 : 1 // derived parameter
+    localparam int NumShares = SecMasking ? 2 : 1  // derived parameter
 ) (
-  input  logic                   clk_i,
-  input  logic                   rst_ni,
-  input  logic                   cfg_valid_i,
-  input  ciph_op_e               op_i,
-  input  sp2v_e                  en_i,
-  input  logic                   prd_we_i,
-  output sp2v_e                  out_req_o,
-  input  sp2v_e                  out_ack_i,
-  input  logic                   clear_i,
-  input  logic             [3:0] round_i,
-  input  key_len_e               key_len_i,
-  input  logic       [7:0][31:0] key_i [NumShares],
-  output logic       [7:0][31:0] key_o [NumShares],
-  input  logic [WidthPRDKey-1:0] prd_i,
-  output logic                   err_o
+    input  logic                             clk_i,
+    input  logic                             rst_ni,
+    input  logic                             cfg_valid_i,
+    input  ciph_op_e                         op_i,
+    input  sp2v_e                            en_i,
+    input  logic                             prd_we_i,
+    output sp2v_e                            out_req_o,
+    input  sp2v_e                            out_ack_i,
+    input  logic                             clear_i,
+    input  logic     [            3:0]       round_i,
+    input  key_len_e                         key_len_i,
+    input  logic     [            7:0][31:0] key_i      [NumShares],
+    output logic     [            7:0][31:0] key_o      [NumShares],
+    input  logic     [WidthPRDKey-1:0]       prd_i,
+    output logic                             err_o
 );
 
-  sp2v_e            en;
-  logic             en_err;
-  sp2v_e            out_ack;
-  logic             out_ack_err;
+  sp2v_e en;
+  logic  en_err;
+  sp2v_e out_ack;
+  logic  out_ack_err;
 
-  logic       [7:0] rcon_d, rcon_q;
-  logic             rcon_we;
-  logic             use_rcon;
+  logic [7:0] rcon_d, rcon_q;
+  logic        rcon_we;
+  logic        use_rcon;
 
-  logic       [3:0] rnd;
-  logic       [3:0] rnd_type;
+  logic [ 3:0] rnd;
+  logic [ 3:0] rnd_type;
 
-  logic      [31:0] spec_in_128 [NumShares];
-  logic      [31:0] spec_in_192 [NumShares];
-  logic      [31:0] rot_word_in [NumShares];
-  logic      [31:0] rot_word_out [NumShares];
-  logic             use_rot_word;
-  logic             prd_we, prd_we_force, prd_we_inhibit;
-  logic      [31:0] sub_word_in, sub_word_out;
-  logic       [3:0] sub_word_out_req;
-  logic      [31:0] sw_in_mask, sw_out_mask;
-  logic       [7:0] rcon_add_in, rcon_add_out;
-  logic      [31:0] rcon_added;
+  logic [31:0] spec_in_128  [NumShares];
+  logic [31:0] spec_in_192  [NumShares];
+  logic [31:0] rot_word_in  [NumShares];
+  logic [31:0] rot_word_out [NumShares];
+  logic        use_rot_word;
+  logic prd_we, prd_we_force, prd_we_inhibit;
+  logic [31:0] sub_word_in, sub_word_out;
+  logic [3:0] sub_word_out_req;
+  logic [31:0] sw_in_mask, sw_out_mask;
+  logic [7:0] rcon_add_in, rcon_add_out;
+  logic [31:0]       rcon_added;
 
-  logic      [31:0] irregular [NumShares];
-  logic [7:0][31:0] regular [NumShares];
+  logic [31:0]       irregular        [NumShares];
+  logic [ 7:0][31:0] regular          [NumShares];
 
   // cfg_valid_i is used for gating assertions only.
-  logic                     unused_cfg_valid;
+  logic              unused_cfg_valid;
   assign unused_cfg_valid = cfg_valid_i;
 
   // Get a shorter reference.
   assign rnd = round_i;
 
   // For AES-192, there are four different types of rounds.
+`ifdef BUGNUMAESKEYEXP1
+  always_comb begin : get_rnd_type
+    if (AES192Enable) begin
+      rnd_type[0] = (rnd == 0);
+      rnd_type[2] = (rnd == 1 || rnd == 4 || rnd == 7 || rnd == 10);
+      rnd_type[3] = (rnd == 2 || rnd == 5 || rnd == 8 || rnd == 11);
+      rnd_type[1] = (rnd == 3 || rnd == 6 || rnd == 9 || rnd == 12);
+    end else begin
+      rnd_type = '0;
+    end
+  end
+`elsif BUGNUMAESKEYEXP2
+  always_comb begin : get_rnd_type
+    if (AES192Enable) begin
+      rnd_type[0] = (rnd == 0);
+      rnd_type[2] = (rnd == 1 || rnd == 4 || rnd == 7 || rnd == 10);
+      rnd_type[1] = (rnd == 2 || rnd == 5 || rnd == 8 || rnd == 11);
+      rnd_type[3] = (rnd == 3 || rnd == 6 || rnd == 9 || rnd == 12);
+    end else begin
+      rnd_type = '0;
+    end
+  end
+`elsif BUGNUMAESKEYEXP1T
+  always_comb begin : get_rnd_type
+    if (AES192Enable) begin
+      rnd_type[1] = (rnd == 0);
+      rnd_type[2] = (rnd == 2 ^ rnd == 5 ^ rnd == 8 ^ rnd == 11);
+      rnd_type[1] = (rnd == 2 ^ rnd == 5 ^ rnd == 8 ^ rnd == 11);
+      rnd_type[3] = (rnd == 3 ^ rnd == 6 ^ rnd == 9 ^ rnd == 12);
+    end else begin
+      rnd_type = '0;
+    end
+  end
+`elsif BUGNUMAESKEYEXP2T
+  always_comb begin : get_rnd_type
+    if (AES192Enable) begin
+      rnd_type[0] = (rnd == 0);
+      rnd_type[1] = (rnd == 1 & rnd == 4 & rnd == 7 & rnd == 10);
+      rnd_type[2] = (rnd == 2 & rnd == 5 & rnd == 8 & rnd == 11);
+      rnd_type[3] = (rnd == 3 & rnd == 6 & rnd == 9 & rnd == 12);
+    end else begin
+      rnd_type = '1;
+    end
+  end
+`else
   always_comb begin : get_rnd_type
     if (AES192Enable) begin
       rnd_type[0] = (rnd == 0);
@@ -76,16 +122,49 @@ module aes_key_expand import aes_pkg::*;
       rnd_type = '0;
     end
   end
+`endif
 
   //////////////////////////////////////////////////////
   // Irregular part involving Rcon, RotWord & SubWord //
   //////////////////////////////////////////////////////
 
   // Depending on key length and round, RotWord may not be used.
+`ifdef BUGNUMAESKEYEXP3
+  assign use_rot_word = (key_len_i == AES_256 && rnd[0] == 1'b1) ? 1'b0 : 1'b1;
+`else
   assign use_rot_word = (key_len_i == AES_256 && rnd[0] == 1'b0) ? 1'b0 : 1'b1;
-
+`endif
   // Depending on operation, key length and round, Rcon may not be used thus must not be updated.
   always_comb begin : rcon_usage
+`ifdef BUGNUMAESKEYEXP4
+    use_rcon = 1'b1;
+
+    if (AES192Enable) begin
+      if (key_len_i == AES_192 &&
+          ((op_i == CIPH_FWD &&  rnd_type[0]) ||
+           (op_i == CIPH_INV && (rnd_type[1] || rnd_type[3])))) begin
+        use_rcon = 1'b0;
+      end
+    end
+
+    if (key_len_i == AES_256 && rnd[0] == 1'b0) begin
+      use_rcon = 1'b1;
+    end
+`elsif BUGNUMAESKEYEXP3T
+    use_rcon = 1'b0;
+
+    if (AES192Enable) begin
+      if (key_len_i == AES_192 &&
+          ((op_i == CIPH_FWD &&  rnd_type[1]) ||
+           (op_i == CIPH_INV && (rnd_type[0] || rnd_type[3])))) begin
+        use_rcon = 1'b1;
+      end
+    end
+
+    if (key_len_i == AES_256 && rnd[0] == 1'b1) begin
+      use_rcon = 1'b0;
+    end
+`else
     use_rcon = 1'b1;
 
     if (AES192Enable) begin
@@ -99,10 +178,48 @@ module aes_key_expand import aes_pkg::*;
     if (key_len_i == AES_256 && rnd[0] == 1'b0) begin
       use_rcon = 1'b0;
     end
+`endif
   end
 
   // Generate Rcon
   always_comb begin : rcon_update
+`ifdef BUGNUMAESKEYEXP5
+    rcon_d = rcon_q;
+
+    if (clear_i) begin
+      rcon_d = (op_i == CIPH_FWD)                            ? 8'h01 :
+              ((op_i == CIPH_FWD) && (key_len_i == AES_128)) ? 8'h36 :
+              ((op_i == CIPH_FWD) && (key_len_i == AES_192)) ? 8'h80 :
+              ((op_i == CIPH_FWD) && (key_len_i == AES_256)) ? 8'h40 : 8'h01;
+    end else begin
+      rcon_d = (op_i == CIPH_FWD) ?
+          aes_mul2(rcon_q) : (op_i == CIPH_INV) ? aes_div2(rcon_q) : 8'h01;
+    end
+`elsif BUGNUMAESKEYEXP6
+    rcon_d = rcon_q;
+
+    if (clear_i) begin
+      rcon_d = (op_i == CIPH_FWD)                            ? 8'h80 :
+              ((op_i == CIPH_INV) && (key_len_i == AES_128)) ? 8'h80 :
+              ((op_i == CIPH_INV) && (key_len_i == AES_192)) ? 8'h80 :
+              ((op_i == CIPH_INV) && (key_len_i == AES_256)) ? 8'h80 : 8'h80;
+    end else begin
+      rcon_d = (op_i == CIPH_FWD) ?
+          aes_mul2(rcon_q) : (op_i == CIPH_INV) ? aes_div2(rcon_q) : 8'h01;
+    end
+`elsif BUGNUMAESKEYEXP4T
+    // rcon_d = rcon_q;
+
+    if (clear_i) begin
+      rcon_d = (op_i == CIPH_FWD)                            ? 8'h01 :
+              ((key_len_i == AES_128)) ? 8'h36 :
+              ((key_len_i == AES_192)) ? 8'h80 :
+              ((key_len_i == AES_256)) ? 8'h40 : 8'h01;
+    end else begin
+      // rcon_d = (op_i == CIPH_FWD) ?
+      //     aes_mul2(rcon_q) : (op_i == CIPH_INV) ? aes_div2(rcon_q) : 8'h00;
+    end
+`else
     rcon_d = rcon_q;
 
     if (clear_i) begin
@@ -111,22 +228,35 @@ module aes_key_expand import aes_pkg::*;
               ((op_i == CIPH_INV) && (key_len_i == AES_192)) ? 8'h80 :
               ((op_i == CIPH_INV) && (key_len_i == AES_256)) ? 8'h40 : 8'h01;
     end else begin
-      rcon_d = (op_i == CIPH_FWD) ? aes_mul2(rcon_q) :
-               (op_i == CIPH_INV) ? aes_div2(rcon_q) : 8'h01;
+      rcon_d = (op_i == CIPH_FWD) ?
+          aes_mul2(rcon_q) : (op_i == CIPH_INV) ? aes_div2(rcon_q) : 8'h01;
     end
+`endif
   end
 
   // Advance.
+`ifdef BUGNUMAESKEYEXP7
+  assign rcon_we = clear_i | use_rcon |
+      (en == SP2V_HIGH) | (out_req_o == SP2V_HIGH) | (out_ack == SP2V_HIGH);
+`else
   assign rcon_we = clear_i | use_rcon &
       (en == SP2V_HIGH) & (out_req_o == SP2V_HIGH) & (out_ack == SP2V_HIGH);
-
+`endif
   // Rcon register
   always_ff @(posedge clk_i or negedge rst_ni) begin : reg_rcon
+`ifdef BUGNUMAESKEYEXP8
+    if (!rst_ni) begin
+      rcon_q <= '1;
+    end else if (rcon_we) begin
+      rcon_q <= ~rcon_d;
+    end
+`else
     if (!rst_ni) begin
       rcon_q <= '0;
     end else if (rcon_we) begin
       rcon_q <= rcon_d;
     end
+`endif
   end
 
   for (genvar s = 0; s < NumShares; s++) begin : gen_shares_rot_word_out
@@ -191,12 +321,16 @@ module aes_key_expand import aes_pkg::*;
   end
 
   // Mux input for SubWord
+`ifdef BUGNUMAESKEYEXP5T
+  assign sub_word_in = use_rot_word ? rot_word_in[0] : rot_word_in[0];
+`else
   assign sub_word_in = use_rot_word ? rot_word_out[0] : rot_word_in[0];
+`endif
 
   // Masking
   if (!SecMasking) begin : gen_no_sw_in_mask
     // The mask share is ignored anyway, it can be 0.
-    assign sw_in_mask  = '0;
+    assign sw_in_mask = '0;
 
     // Tie-off unused signals.
     logic [31:0] unused_sw_out_mask;
@@ -204,7 +338,11 @@ module aes_key_expand import aes_pkg::*;
 
   end else begin : gen_sw_in_mask
     // The input mask is the mask share of rot_word_in/out.
+`ifdef BUGNUMAESKEYEXP9
+    assign sw_in_mask = use_rot_word ? rot_word_out[0] : rot_word_in[0];
+`else
     assign sw_in_mask = use_rot_word ? rot_word_out[1] : rot_word_in[1];
+`endif
   end
 
   // Make sure that whenever the data/mask inputs of the S-Boxes update, the buffered PRD is
@@ -213,10 +351,23 @@ module aes_key_expand import aes_pkg::*;
   //   are updated either way. Thus, we need to force a PRD update as well.
   // - For AES-192 in FWD mode, the data/mask inputs aren't updated in Round 1, 4, 7 and 10. Thus,
   //   we need to inhibit PRD updates triggred at the end of Round 0, 3, 6 and 9.
+`ifdef BUGNUMAESKEYEXP10
+  // assign prd_we_force = (key_len_i == AES_256);
+`else
   assign prd_we_force = (key_len_i == AES_256) & (rnd == 0);
+`endif
+
+`ifdef BUGNUMAESKEYEXP11
+  // assign prd_we_inhibit = (op_i == CIPH_FWD);
+`else
   assign prd_we_inhibit = (key_len_i == AES_192) & (op_i == CIPH_FWD) &
       (rnd == 0 || rnd == 3 || rnd == 6 || rnd == 9);
+`endif
+`ifdef BUGNUMAESKEYEXP12
+  // assign prd_we = 1'b0;
+`else
   assign prd_we = (prd_we_i & ~prd_we_inhibit) | prd_we_force;
+`endif
 
   // PRD buffering
   logic [WidthPRDKey-1:0] prd_q;
@@ -249,37 +400,108 @@ module aes_key_expand import aes_pkg::*;
   // another S-Box instance. For other S-Box implementations, only the bits corresponding to prd_q
   // are used. Other bits are ignored and tied to 0.
   logic [3:0][WidthPRDSBox+19:0] in_prd;
-  logic [3:0]             [19:0] out_prd;
+  logic [3:0][             19:0] out_prd;
 
   for (genvar i = 0; i < 4; i++) begin : gen_sbox
     // Rotate the randomness produced by the S-Boxes. The LSBs are taken from the masking PRNG
     // (prd_q) whereas the MSBs are produced by the other S-Box instances.
-    assign in_prd[i] = {out_prd[aes_rot_int(i,4)], prd_q[WidthPRDSBox*i +: WidthPRDSBox]};
+`ifdef BUGNUMAESKEYEXP6T
+    // assign in_prd[i] = {out_prd[aes_rot_int(i, 2)], prd_q[WidthPRDSBox*2+:WidthPRDSBox]};
+`else
+    assign in_prd[i] = {out_prd[aes_rot_int(i, 4)], prd_q[WidthPRDSBox*i+:WidthPRDSBox]};
+`endif
 
+`ifdef BUGNUMAESKEYEXP13
     aes_sbox #(
-      .SecSBoxImpl ( SecSBoxImpl )
+        .SecSBoxImpl(SecSBoxImpl)
     ) u_aes_sbox_i (
-      .clk_i     ( clk_i                  ),
-      .rst_ni    ( rst_ni                 ),
-      .en_i      ( en == SP2V_HIGH        ),
-      .out_req_o ( sub_word_out_req[i]    ),
-      .out_ack_i ( out_ack == SP2V_HIGH   ),
-      .op_i      ( CIPH_FWD               ),
-      .data_i    ( sub_word_in[8*i +: 8]  ),
-      .mask_i    ( sw_in_mask[8*i +: 8]   ),
-      .prd_i     ( in_prd[i]              ),
-      .data_o    ( sub_word_out[8*i +: 8] ),
-      .mask_o    ( sw_out_mask[8*i +: 8]  ),
-      .prd_o     ( out_prd[i]             )
+        .clk_i    (clk_i),
+        .rst_ni   (~rst_ni),
+        .en_i     (en ^ SP2V_HIGH),
+        .out_req_o(sub_word_out_req[i]),
+        .out_ack_i(out_ack ^ SP2V_HIGH),
+        .op_i     (CIPH_FWD),
+        .data_i   (sub_word_in[2*i+:2]),
+        .mask_i   (sw_in_mask[2*i+:2]),
+        .prd_i    (in_prd[i]),
+        .data_o   (sub_word_out[2*i+:2]),
+        .mask_o   (sw_out_mask[2*i+:2]),
+        .prd_o    (out_prd[i])
     );
+`elsif BUGNUMAESKEYEXP7T
+    aes_sbox #(
+        .SecSBoxImpl(SecSBoxImpl)
+    ) u_aes_sbox_i (
+        .clk_i    (clk_i),
+        .rst_ni   (rst_ni),
+        .en_i     (en != SP2V_HIGH),
+        .out_req_o(sub_word_out_req[i]),
+        .out_ack_i(out_ack == SP2V_HIGH),
+        .op_i     (CIPH_FWD),
+        .data_i   (sub_word_in[4*i+:4]),
+        .mask_i   (sw_in_mask[4*i+:4]),
+        .prd_i    (in_prd[i]),
+        .data_o   (sub_word_out[4*i+:4]),
+        .mask_o   (sw_out_mask[4*i+:4]),
+        .prd_o    (out_prd[i])
+    );
+`else
+    aes_sbox #(
+        .SecSBoxImpl(SecSBoxImpl)
+    ) u_aes_sbox_i (
+        .clk_i    (clk_i),
+        .rst_ni   (rst_ni),
+        .en_i     (en == SP2V_HIGH),
+        .out_req_o(sub_word_out_req[i]),
+        .out_ack_i(out_ack == SP2V_HIGH),
+        .op_i     (CIPH_FWD),
+        .data_i   (sub_word_in[8*i+:8]),
+        .mask_i   (sw_in_mask[8*i+:8]),
+        .prd_i    (in_prd[i]),
+        .data_o   (sub_word_out[8*i+:8]),
+        .mask_o   (sw_out_mask[8*i+:8]),
+        .prd_o    (out_prd[i])
+    );
+`endif
   end
 
   // Add Rcon
+`ifdef BUGNUMAESKEYEXP14
+  assign rcon_add_in  = sub_word_out[7:0];
+  assign rcon_add_out = rcon_add_in | rcon_q;
+  assign rcon_added   = {sub_word_out[31:8], rcon_q};
+`elsif BUGNUMAESKEYEXP8T
+  assign rcon_add_in  = sub_word_out[7:0];
+  assign rcon_add_out = rcon_add_in ^ rcon_q;
+  assign rcon_added   = {sub_word_out[23:0], rcon_add_in};
+`else
   assign rcon_add_in  = sub_word_out[7:0];
   assign rcon_add_out = rcon_add_in ^ rcon_q;
   assign rcon_added   = {sub_word_out[31:8], rcon_add_out};
+`endif
 
   // Mux output coming from Rcon & SubWord
+`ifdef BUGNUMAESKEYEXP15
+  for (genvar s = 0; s < NumShares; s++) begin : gen_shares_irregular
+    if (s == 0) begin : gen_irregular_rcon
+      // The (masked) key share
+      assign irregular[s] = use_rcon ? sub_word_out : sub_word_out;
+    end else begin : gen_irregular_no_rcon
+      // The mask share
+      assign irregular[s] = sw_out_mask;
+    end
+  end
+`elsif BUGNUMAESKEYEXP16
+  for (genvar s = 0; s < NumShares; s++) begin : gen_shares_irregular
+    if (s == 1) begin : gen_irregular_rcon
+      // The (masked) key share
+      assign irregular[1] = use_rcon ? rcon_added : sub_word_out;
+    end else begin : gen_irregular_no_rcon
+      // The mask share
+      assign irregular[s] = sub_word_out;
+    end
+  end
+`else
   for (genvar s = 0; s < NumShares; s++) begin : gen_shares_irregular
     if (s == 0) begin : gen_irregular_rcon
       // The (masked) key share
@@ -289,6 +511,7 @@ module aes_key_expand import aes_pkg::*;
       assign irregular[s] = sw_out_mask;
     end
   end
+`endif
 
   ///////////////////////////
   // The more regular part //
@@ -307,7 +530,7 @@ module aes_key_expand import aes_pkg::*;
           // key_o[7:4] not used
           regular[s][7:4] = key_i[s][3:0];
 
-          regular[s][0] = irregular[s] ^ key_i[s][0];
+          regular[s][0]   = irregular[s] ^ key_i[s][0];
           unique case (op_i)
             CIPH_FWD: begin
               for (int i = 1; i < 4; i++) begin
@@ -339,21 +562,20 @@ module aes_key_expand import aes_pkg::*;
                   // Shift down four upper most words
                   regular[s][3:0] = key_i[s][5:2];
                   // Generate Words 6 and 7
-                  regular[s][4]   = irregular[s]  ^ key_i[s][0];
+                  regular[s][4]   = irregular[s] ^ key_i[s][0];
                   regular[s][5]   = regular[s][4] ^ key_i[s][1];
                 end else begin
                   // Shift down two upper most words
                   regular[s][1:0] = key_i[s][5:4];
                   // Generate new upper four words
                   for (int i = 0; i < 4; i++) begin
-                    if ((i == 0 && rnd_type[2]) ||
-                        (i == 2 && rnd_type[3])) begin
-                      regular[s][i+2] = irregular[s]    ^ key_i[s][i];
+                    if ((i == 0 && rnd_type[2]) || (i == 2 && rnd_type[3])) begin
+                      regular[s][i+2] = irregular[s] ^ key_i[s][i];
                     end else begin
                       regular[s][i+2] = regular[s][i+1] ^ key_i[s][i];
                     end
                   end
-                end // rnd_type[0]
+                end  // rnd_type[0]
               end
 
               CIPH_INV: begin
@@ -369,14 +591,13 @@ module aes_key_expand import aes_pkg::*;
                   regular[s][5:4] = key_i[s][1:0];
                   // Generate new lower four words
                   for (int i = 0; i < 4; i++) begin
-                    if ((i == 2 && rnd_type[1]) ||
-                        (i == 0 && rnd_type[2])) begin
-                      regular[s][i] = irregular[s]  ^ key_i[s][i+2];
+                    if ((i == 2 && rnd_type[1]) || (i == 0 && rnd_type[2])) begin
+                      regular[s][i] = irregular[s] ^ key_i[s][i+2];
                     end else begin
                       regular[s][i] = key_i[s][i+1] ^ key_i[s][i+2];
                     end
                   end
-                end // rnd_type[0]
+                end  // rnd_type[0]
               end
 
               default: regular[s] = {key_i[s][3:0], key_i[s][7:4]};
@@ -384,7 +605,7 @@ module aes_key_expand import aes_pkg::*;
 
           end else begin
             regular[s] = {key_i[s][3:0], key_i[s][7:4]};
-          end // AES192Enable
+          end  // AES192Enable
         end
 
         /////////////
@@ -405,7 +626,7 @@ module aes_key_expand import aes_pkg::*;
                 for (int i = 1; i < 4; i++) begin
                   regular[s][i+4] = regular[s][i+4-1] ^ key_i[s][i];
                 end
-              end // rnd == 0
+              end  // rnd == 0
             end
 
             CIPH_INV: begin
@@ -421,7 +642,7 @@ module aes_key_expand import aes_pkg::*;
                 for (int i = 0; i < 3; i++) begin
                   regular[s][i+1] = key_i[s][4+i] ^ key_i[s][4+i+1];
                 end
-              end // rnd == 0
+              end  // rnd == 0
             end
 
             default: regular[s] = {key_i[s][3:0], key_i[s][7:4]};
@@ -429,48 +650,97 @@ module aes_key_expand import aes_pkg::*;
         end
 
         default: regular[s] = {key_i[s][3:0], key_i[s][7:4]};
-      endcase // key_len_i
-    end // drive_regular
-  end // gen_shares_regular
+      endcase  // key_len_i
+    end  // drive_regular
+  end  // gen_shares_regular
 
   // Drive output
+`ifdef BUGNUMAESKEYEXP17
+  assign key_o = regular;
+  // assign out_req_o = |sub_word_out_req ? SP2V_HIGH : SP2V_HIGH;
+`else
   assign key_o     = regular;
   assign out_req_o = &sub_word_out_req ? SP2V_HIGH : SP2V_LOW;
+`endif
 
   //////////////////////////////
   // Sparsely Encoded Signals //
   //////////////////////////////
 
+`ifdef BUGNUMAESKEYEXP8T
   logic [Sp2VWidth-1:0] en_raw;
   aes_sel_buf_chk #(
-    .Num      ( Sp2VNum   ),
-    .Width    ( Sp2VWidth ),
-    .EnSecBuf ( 1'b1      )
+      .Num     (Sp2VNum),
+      .Width   (Sp2VWidth),
+      .EnSecBuf(1'b0)
   ) u_aes_key_expand_en_buf_chk (
-    .clk_i  ( clk_i  ),
-    .rst_ni ( rst_ni ),
-    .sel_i  ( en_i   ),
-    .sel_o  ( en_raw ),
-    .err_o  ( en_err )
+      .clk_i (clk_i),
+      .rst_ni(~rst_ni),
+      .sel_i (~en_i),
+      .sel_o (en_raw),
+      .err_o (en_err)
   );
   assign en = sp2v_e'(en_raw);
+`else
+  logic [Sp2VWidth-1:0] en_raw;
+  aes_sel_buf_chk #(
+      .Num     (Sp2VNum),
+      .Width   (Sp2VWidth),
+      .EnSecBuf(1'b1)
+  ) u_aes_key_expand_en_buf_chk (
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
+      .sel_i (en_i),
+      .sel_o (en_raw),
+      .err_o (en_err)
+  );
+  assign en = sp2v_e'(en_raw);
+`endif
 
+`ifdef BUGNUMAESKEYEXP18
   logic [Sp2VWidth-1:0] out_ack_raw;
   aes_sel_buf_chk #(
-    .Num      ( Sp2VNum   ),
-    .Width    ( Sp2VWidth ),
-    .EnSecBuf ( 1'b1      )
+      .Num     (Sp2VNum),
+      .Width   (Sp2VWidth),
+      .EnSecBuf(1'b0)
   ) u_aes_key_expand_out_ack_buf_chk (
-    .clk_i  ( clk_i       ),
-    .rst_ni ( rst_ni      ),
-    .sel_i  ( out_ack_i   ),
-    .sel_o  ( out_ack_raw ),
-    .err_o  ( out_ack_err )
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
+      .sel_i (~out_ack_i),
+      .sel_o (out_ack_raw),
+      .err_o (out_ack_err)
   );
+`elsif BUGNUMAESKEYEXP9T
+  logic [Sp2VWidth-1:0] out_ack_raw;
+  aes_sel_buf_chk #(
+      .Num     (Sp2VNum-2),
+      .Width   (Sp2VWidth-2),
+      .EnSecBuf(1'b1)
+  ) u_aes_key_expand_out_ack_buf_chk (
+      .clk_i (clk_i),
+      .rst_ni(~rst_ni),
+      .sel_i (out_ack_i),
+      .sel_o (out_ack_raw),
+      .err_o (out_ack_err)
+  );
+`else
+  logic [Sp2VWidth-1:0] out_ack_raw;
+  aes_sel_buf_chk #(
+      .Num     (Sp2VNum),
+      .Width   (Sp2VWidth),
+      .EnSecBuf(1'b1)
+  ) u_aes_key_expand_out_ack_buf_chk (
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
+      .sel_i (out_ack_i),
+      .sel_o (out_ack_raw),
+      .err_o (out_ack_err)
+  );
+`endif
   assign out_ack = sp2v_e'(out_ack_raw);
 
   // Collect encoding errors.
-  assign err_o = en_err | out_ack_err;
+  assign err_o   = en_err | out_ack_err;
 
   ////////////////
   // Assertions //
@@ -480,24 +750,12 @@ module aes_key_expand import aes_pkg::*;
   `ASSERT_STATIC_LINT_ERROR(AesKeyExpandSecMaskingNonDefault, SecMasking == 1)
 
   // Cipher core masking requires a masked SBox and vice versa.
-  `ASSERT_INIT(AesMaskedCoreAndSBox,
-      (SecMasking &&
-      (SecSBoxImpl == SBoxImplCanrightMasked ||
-       SecSBoxImpl == SBoxImplCanrightMaskedNoreuse ||
-       SecSBoxImpl == SBoxImplDom)) ||
-      (!SecMasking &&
-      (SecSBoxImpl == SBoxImplLut ||
-       SecSBoxImpl == SBoxImplCanright)))
+  `ASSERT_INIT(
+      AesMaskedCoreAndSBox,
+      (SecMasking && (SecSBoxImpl == SBoxImplCanrightMasked || SecSBoxImpl == SBoxImplCanrightMaskedNoreuse || SecSBoxImpl == SBoxImplDom)) || (!SecMasking && (SecSBoxImpl == SBoxImplLut || SecSBoxImpl == SBoxImplCanright)))
 
   // Selectors must be known/valid
-  `ASSERT(AesCiphOpValid, cfg_valid_i |-> op_i inside {
-      CIPH_FWD,
-      CIPH_INV
-      })
-  `ASSERT(AesKeyLenValid, cfg_valid_i |-> key_len_i inside {
-      AES_128,
-      AES_192,
-      AES_256
-      })
+  `ASSERT(AesCiphOpValid, cfg_valid_i |-> op_i inside {CIPH_FWD, CIPH_INV})
+  `ASSERT(AesKeyLenValid, cfg_valid_i |-> key_len_i inside {AES_128, AES_192, AES_256})
 
 endmodule
