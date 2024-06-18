@@ -544,7 +544,7 @@ module aes_cipher_core
 `else
     aes_shift_rows u_aes_shift_rows (
         .op_i  (op_i),
-        .data_i(shift_rows_in[0]),
+        .data_i(shift_rows_in[s]),
         .data_o(shift_rows_out[s])
     );
 `endif
