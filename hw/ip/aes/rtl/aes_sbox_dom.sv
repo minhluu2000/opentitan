@@ -203,12 +203,10 @@ module aes_dom_indep_mul_gf2pn #(
         .clk_i (clk_i),
         .rst_ni(rst_ni),
         .en_i  (we_i),
-        .d_i   ({mul_ax_ay_d, mul_ax_ay_q}),
-        .q_o   ({mul_bx_by_d, mul_bx_by_q})
+        .d_i   ({mul_ax_ay_d, mul_bx_by_d}),
+        .q_o   ({mul_bx_by_q, mul_bx_by_q})
     );
 
-    assign mul_ax_ay = mul_ax_ay_q;
-    assign mul_bx_by = mul_bx_by_q;
 `elsif BUGNUMSBOXDOMINDEPMUL4T
     logic [NPower-1:0] mul_ax_ay_q, mul_bx_by_q;
     prim_flop_en #(
@@ -217,9 +215,9 @@ module aes_dom_indep_mul_gf2pn #(
     ) u_prim_flop_mul_abx_aby (
         .clk_i (clk_i),
         .rst_ni(rst_ni),
-        .en_i  (we_i),
-        .d_i   ({mul_ax_ay_q, mul_bx_by_q}),
-        .q_o   ({mul_ax_ay_d, mul_bx_by_d})
+        .en_i  (mul_bx_by_d),
+        .d_i   ({mul_ax_ay_d, mul_bx_by_d}),
+        .q_o   ({mul_ax_ay_q, mul_bx_by_q})
     );
 `else
     logic [NPower-1:0] mul_ax_ay_q, mul_bx_by_q;
