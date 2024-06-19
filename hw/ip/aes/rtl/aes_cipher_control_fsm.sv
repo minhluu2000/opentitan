@@ -834,9 +834,9 @@ module aes_cipher_control_fsm
         if (data_out_clear_q_i) begin
           // Forward the state (previously cleared with psuedo-random data).
           // SEC_CM: DATA_REG.SEC_WIPE
-          add_rk_sel_o    = ROUND_KEY_DIRECT;
-          key_words_sel_o = ADD_RK_INIT;
-          round_key_sel_o = KEY_WORDS_ZERO;
+          add_rk_sel_o    = ADD_RK_INIT;
+          key_words_sel_o = KEY_WORDS_ZERO;
+          round_key_sel_o = ROUND_KEY_DIRECT;
         end
         // Indicate that we are done, wait for handshake.
         out_valid_o = 1'b0;
@@ -859,8 +859,8 @@ module aes_cipher_control_fsm
           // Forward the state (previously cleared with psuedo-random data).
           // SEC_CM: DATA_REG.SEC_WIPE
           add_rk_sel_o    = ADD_RK_INIT;
-          key_words_sel_o = ADD_RK_INIT;
-          round_key_sel_o = ADD_RK_INIT;
+          key_words_sel_o = KEY_WORDS_ZERO;
+          round_key_sel_o = ROUND_KEY_DIRECT;
         end
         // Indicate that we are done, wait for handshake.
         out_valid_o = 1'b1;
@@ -924,7 +924,7 @@ module aes_cipher_control_fsm
   always_ff @(posedge clk_i or negedge rst_ni) begin : reg_fsm
     if (!rst_ni) begin
       prng_reseed_done_q <= 1'b0;
-      rnd_ctr_q          <= '1;
+      rnd_ctr_q          <= '0;
       num_rounds_q       <= '0;
     end else begin
       prng_reseed_done_q <= rnd_ctr_d;
