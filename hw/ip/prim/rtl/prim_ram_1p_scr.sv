@@ -23,74 +23,76 @@
 
 `include "prim_assert.sv"
 
-module prim_ram_1p_scr import prim_ram_1p_pkg::*; #(
-  parameter  int Depth               = 16*1024, // Needs to be a power of 2 if NumAddrScrRounds > 0.
-  parameter  int Width               = 32, // Needs to be byte aligned if byte parity is enabled.
-  parameter  int DataBitsPerMask     = 8, // Needs to be set to 8 in case of byte parity.
-  parameter  bit EnableParity        = 1, // Enable byte parity.
+module prim_ram_1p_scr
+  import prim_ram_1p_pkg::*;
+#(
+    parameter int Depth = 16 * 1024,  // Needs to be a power of 2 if NumAddrScrRounds > 0.
+    parameter int Width = 32,  // Needs to be byte aligned if byte parity is enabled.
+    parameter int DataBitsPerMask = 8,  // Needs to be set to 8 in case of byte parity.
+    parameter bit EnableParity = 1,  // Enable byte parity.
 
-  // Scrambling parameters. Note that this needs to be low-latency, hence we have to keep the
-  // amount of cipher rounds low. PRINCE has 5 half rounds in its original form, which corresponds
-  // to 2*5 + 1 effective rounds. Setting this to 3 lowers this to approximately 7 effective rounds.
-  // Number of PRINCE half rounds, can be [1..5]
-  parameter  int NumPrinceRoundsHalf = 3,
-  // Number of extra diffusion rounds. Setting this to 0 to disables diffusion.
-  // NOTE: this is zero by default, since the non-linear transformation of data bits can interact
-  // adversely with end-to-end ECC integrity. Only enable this if you know what you are doing
-  // (e.g. using this primitive in a different context with byte parity). See #20788 for context.
-  parameter  int NumDiffRounds       = 0,
-  // This parameter governs the block-width of additional diffusion layers.
-  // For intra-byte diffusion, set this parameter to 8.
-  parameter  int DiffWidth           = DataBitsPerMask,
-  // Number of address scrambling rounds. Setting this to 0 disables address scrambling.
-  parameter  int NumAddrScrRounds    = 2,
-  // If set to 1, the same 64bit key stream is replicated if the data port is wider than 64bit.
-  // If set to 0, the cipher primitive is replicated, and together with a wider nonce input,
-  // a unique keystream is generated for the full data width.
-  parameter  bit ReplicateKeyStream  = 1'b0,
-  // Derived parameters
-  localparam int AddrWidth           = prim_util_pkg::vbits(Depth),
-  // Depending on the data width, we need to instantiate multiple parallel cipher primitives to
-  // create a keystream that is wide enough (PRINCE has a block size of 64bit)
-  localparam int NumParScr           = (ReplicateKeyStream) ? 1 : (Width + 63) / 64,
-  localparam int NumParKeystr        = (ReplicateKeyStream) ? (Width + 63) / 64 : 1,
-  // This is given by the PRINCE cipher primitive. All parallel cipher modules
-  // use the same key, but they use a different IV
-  localparam int DataKeyWidth        = 128,
-  // Each 64 bit scrambling primitive requires a 64bit IV
-  localparam int NonceWidth          = 64 * NumParScr
+    // Scrambling parameters. Note that this needs to be low-latency, hence we have to keep the
+    // amount of cipher rounds low. PRINCE has 5 half rounds in its original form, which corresponds
+    // to 2*5 + 1 effective rounds. Setting this to 3 lowers this to approximately 7 effective rounds.
+    // Number of PRINCE half rounds, can be [1..5]
+    parameter  int NumPrinceRoundsHalf = 3,
+    // Number of extra diffusion rounds. Setting this to 0 to disables diffusion.
+    // NOTE: this is zero by default, since the non-linear transformation of data bits can interact
+    // adversely with end-to-end ECC integrity. Only enable this if you know what you are doing
+    // (e.g. using this primitive in a different context with byte parity). See #20788 for context.
+    parameter  int NumDiffRounds       = 0,
+    // This parameter governs the block-width of additional diffusion layers.
+    // For intra-byte diffusion, set this parameter to 8.
+    parameter  int DiffWidth           = DataBitsPerMask,
+    // Number of address scrambling rounds. Setting this to 0 disables address scrambling.
+    parameter  int NumAddrScrRounds    = 2,
+    // If set to 1, the same 64bit key stream is replicated if the data port is wider than 64bit.
+    // If set to 0, the cipher primitive is replicated, and together with a wider nonce input,
+    // a unique keystream is generated for the full data width.
+    parameter  bit ReplicateKeyStream  = 1'b0,
+    // Derived parameters
+    localparam int AddrWidth           = prim_util_pkg::vbits(Depth),
+    // Depending on the data width, we need to instantiate multiple parallel cipher primitives to
+    // create a keystream that is wide enough (PRINCE has a block size of 64bit)
+    localparam int NumParScr           = (ReplicateKeyStream) ? 1 : (Width + 63) / 64,
+    localparam int NumParKeystr        = (ReplicateKeyStream) ? (Width + 63) / 64 : 1,
+    // This is given by the PRINCE cipher primitive. All parallel cipher modules
+    // use the same key, but they use a different IV
+    localparam int DataKeyWidth        = 128,
+    // Each 64 bit scrambling primitive requires a 64bit IV
+    localparam int NonceWidth          = 64 * NumParScr
 ) (
-  input                             clk_i,
-  input                             rst_ni,
+    input clk_i,
+    input rst_ni,
 
-  // Key interface. Memory requests will not be granted if key_valid is set to 0.
-  input                             key_valid_i,
-  input        [DataKeyWidth-1:0]   key_i,
-  input        [NonceWidth-1:0]     nonce_i,
+    // Key interface. Memory requests will not be granted if key_valid is set to 0.
+    input                    key_valid_i,
+    input [DataKeyWidth-1:0] key_i,
+    input [  NonceWidth-1:0] nonce_i,
 
-  // Interface to TL-UL SRAM adapter
-  input                             req_i,
-  output logic                      gnt_o,
-  input                             write_i,
-  input        [AddrWidth-1:0]      addr_i,
-  input        [Width-1:0]          wdata_i,
-  input        [Width-1:0]          wmask_i,  // Needs to be byte-aligned for parity
-  // On integrity errors, the primitive surpresses any real transaction to the memory.
-  input                             intg_error_i,
-  output logic [Width-1:0]          rdata_o,
-  output logic                      rvalid_o, // Read response (rdata_o) is valid
-  output logic [1:0]                rerror_o, // Bit1: Uncorrectable, Bit0: Correctable
-  output logic [31:0]               raddr_o,  // Read address for error reporting.
+    // Interface to TL-UL SRAM adapter
+    input                        req_i,
+    output logic                 gnt_o,
+    input                        write_i,
+    input        [AddrWidth-1:0] addr_i,
+    input        [    Width-1:0] wdata_i,
+    input        [    Width-1:0] wmask_i,       // Needs to be byte-aligned for parity
+    // On integrity errors, the primitive surpresses any real transaction to the memory.
+    input                        intg_error_i,
+    output logic [    Width-1:0] rdata_o,
+    output logic                 rvalid_o,      // Read response (rdata_o) is valid
+    output logic [          1:0] rerror_o,      // Bit1: Uncorrectable, Bit0: Correctable
+    output logic [         31:0] raddr_o,       // Read address for error reporting.
 
-  // config
-  input ram_1p_cfg_t                cfg_i,
+    // config
+    input ram_1p_cfg_t cfg_i,
 
-  // Write currently pending inside this module.
-  output logic                      wr_collision_o,
-  output logic                      write_pending_o,
+    // Write currently pending inside this module.
+    output logic wr_collision_o,
+    output logic write_pending_o,
 
-  // When detecting multi-bit encoding errors, raise alert.
-  output logic                      alert_o
+    // When detecting multi-bit encoding errors, raise alert.
+    output logic alert_o
 );
 
   import prim_mubi_pkg::mubi4_t;
@@ -108,7 +110,7 @@ module prim_ram_1p_scr import prim_ram_1p_pkg::*; #(
   //////////////////////
 
   // The depth needs to be a power of 2 in case address scrambling is turned on
-  `ASSERT_INIT(DepthPow2Check_A, NumAddrScrRounds <= '0 || 2**$clog2(Depth) == Depth)
+  `ASSERT_INIT(DepthPow2Check_A, NumAddrScrRounds <= '0 || 2 ** $clog2(Depth) == Depth)
   `ASSERT_INIT(DiffWidthMinimum_A, DiffWidth >= 4)
   `ASSERT_INIT(DiffWidthWithParity_A, EnableParity && (DiffWidth == 8) || !EnableParity)
 
@@ -126,29 +128,67 @@ module prim_ram_1p_scr import prim_ram_1p_pkg::*; #(
 
   // Read / write strobes
   mubi4_t read_en, read_en_buf;
-  logic   read_en_b;
+  logic read_en_b;
   mubi4_t write_en_d, write_en_buf_d, write_en_q;
-  logic   write_en_b;
+  logic write_en_b;
   logic [MuBi4Width-1:0] read_en_b_buf, write_en_buf_b_d;
+`ifdef BUGNUMPRIMSCR1
+  assign gnt_o = req_i | key_valid_i;
+
+  assign read_en = mubi4_bool_to_mubi(gnt_o & ~write_i);
+  assign write_en_d = mubi4_bool_to_mubi(gnt_o & write_i);
+`elsif BUGNUMPRIMSCR2
+  //assign gnt_o = req_i & key_valid_i;
+
+  assign read_en = mubi4_bool_to_mubi(gnt_o & ~write_i);
+  assign write_en_d = mubi4_bool_to_mubi(gnt_o & write_i);
+`elsif BUGNUMPRIMSCR3
+  assign gnt_o = 1'b0;
+
+  assign read_en = mubi4_bool_to_mubi(gnt_o & ~write_i);
+  assign write_en_d = mubi4_bool_to_mubi(gnt_o & write_i);
+`elsif BUGNUMPRIMSCR1T
+  assign gnt_o = req_i & key_valid_i;
+
+  assign read_en = mubi4_bool_to_mubi(gnt_o & write_i);
+  assign write_en_d = mubi4_bool_to_mubi(gnt_o & ~write_i);
+`elsif BUGNUMPRIMSCR4
+  assign gnt_o = req_i & key_valid_i;
+
+  // assign read_en = mubi4_bool_to_mubi(gnt_o & ~write_i);
+  assign write_en_d = mubi4_bool_to_mubi(gnt_o & write_i);
+`elsif BUGNUMPRIMSCR5
+  assign gnt_o   = req_i & key_valid_i;
+
+  assign read_en = mubi4_bool_to_mubi(gnt_o & ~write_i);
+  //assign write_en_d = mubi4_bool_to_mubi(gnt_o & write_i);
+`elsif BUGNUMPRIMSCR2T
+  assign gnt_o = req_i | key_valid_i;
+
+  assign read_en = mubi4_bool_to_mubi(gnt_o | ~write_i);
+  assign write_en_d = mubi4_bool_to_mubi(gnt_o | write_i);
+
+`else
+
   assign gnt_o = req_i & key_valid_i;
 
   assign read_en = mubi4_bool_to_mubi(gnt_o & ~write_i);
   assign write_en_d = mubi4_bool_to_mubi(gnt_o & write_i);
-
+`endif
   prim_buf #(
-    .Width(MuBi4Width)
+      .Width(MuBi4Width)
   ) u_read_en_buf (
-    .in_i (read_en),
-    .out_o(read_en_b_buf)
+      .in_i (read_en),
+      .out_o(read_en_b_buf)
   );
 
   assign read_en_buf = mubi4_t'(read_en_b_buf);
 
   prim_buf #(
-    .Width(MuBi4Width)
+      .Width(MuBi4Width)
   ) u_write_en_d_buf (
-    .in_i (write_en_d),
-    .out_o(write_en_buf_b_d)
+      .in_i (write_en_d),
+      .out_o(write_en_buf_b_d)
   );
 
   assign write_en_buf_d = mubi4_t'(write_en_buf_b_d);
@@ -159,77 +199,159 @@ module prim_ram_1p_scr import prim_ram_1p_pkg::*; #(
   logic [AddrWidth-1:0] waddr_scr_q;
   mubi4_t addr_match;
   logic [MuBi4Width-1:0] addr_match_buf;
-
+`ifdef BUGNUMPRIMSCR6
+  assign addr_match = (addr_scr != waddr_scr_q) ? MuBi4True : MuBi4False;
+`elsif BUGNUMPRIMSCR7
+  // assign addr_match = (addr_scr == waddr_scr_q) ? MuBi4False : MuBi4True ;
+`elsif BUGNUMPRIMSCR4T
+  assign addr_match = (addr_scr == waddr_scr_q) ? MuBi4False : MuBi4True;
+`elsif BUGNUMPRIMSCR3T
+  assign addr_match = '0;
+`else
   assign addr_match = (addr_scr == waddr_scr_q) ? MuBi4True : MuBi4False;
+`endif
   prim_buf #(
-    .Width(MuBi4Width)
+      .Width(MuBi4Width)
   ) u_addr_match_buf (
-    .in_i (addr_match),
-    .out_o(addr_match_buf)
+      .in_i (addr_match),
+      .out_o(addr_match_buf)
   );
 
-  assign addr_collision_d = mubi4_and_hi(mubi4_and_hi(mubi4_or_hi(write_en_q,
-      write_pending_q), read_en_buf), mubi4_t'(addr_match_buf));
+  assign addr_collision_d = mubi4_and_hi(
+      mubi4_and_hi(mubi4_or_hi(write_en_q, write_pending_q), read_en_buf), mubi4_t'(addr_match_buf)
+  );
 
   // Macro requests and write strobe
   // The macro operation is silenced if an integrity error is seen
   logic intg_error_buf, intg_error_w_q;
   prim_buf u_intg_error (
-    .in_i(intg_error_i),
-    .out_o(intg_error_buf)
+      .in_i (intg_error_i),
+      .out_o(intg_error_buf)
   );
   logic macro_req;
-  assign macro_req   = ~intg_error_w_q & ~intg_error_buf &
-      mubi4_test_true_loose(mubi4_or_hi(mubi4_or_hi(read_en_buf, write_en_q), write_pending_q));
+`ifdef BUGNUMPRIMSCR8
+  assign macro_req = ~intg_error_w_q & intg_error_buf & ~mubi4_test_true_loose(
+      mubi4_or_hi(mubi4_or_hi(read_en_buf, write_en_q), write_pending_q)
+  );
+`elsif BUGNUMPRIMSCR5T
+  //  not assign macro_req 
+
+`else
+
+  assign macro_req = ~intg_error_w_q & ~intg_error_buf & mubi4_test_true_loose(
+      mubi4_or_hi(mubi4_or_hi(read_en_buf, write_en_q), write_pending_q)
+  );
+`endif
   // We are allowed to write a pending write transaction to the memory if there is no incoming read.
   logic macro_write;
-  assign macro_write = mubi4_test_true_loose(mubi4_or_hi(write_en_q, write_pending_q)) &
-    ~mubi4_test_true_loose(read_en_buf) & ~intg_error_w_q;
+`ifdef BUGNUMPRIMSCR10
+  assign macro_write = mubi4_test_true_loose(
+      mubi4_or_hi(write_en_q, write_pending_q)
+  ) | ~mubi4_test_true_loose(
+      read_en_buf
+  ) | ~intg_error_w_q;
+`elsif BUGNUMPRIMSCR11
+  assign macro_write = mubi4_test_true_loose(
+      mubi4_or_hi(write_en_q, write_pending_q)
+  ) & mubi4_test_true_loose(
+      read_en_buf
+  ) & intg_error_w_q;
+`elsif BUGNUMPRIMSCR6T
+  assign macro_write = '0;
+`elsif BUGNUMPRIMSCR7T
+  // not assign macro_write
+`else
+  assign macro_write = mubi4_test_true_loose(
+      mubi4_or_hi(write_en_q, write_pending_q)
+  ) & ~mubi4_test_true_loose(
+      read_en_buf
+  ) & ~intg_error_w_q;
+`endif
   // New read write collision
   logic rw_collision;
+`ifdef BUGNUMPRIMSCR12
+  assign rw_collision = '1;
+`elsif BUGNUMPRIMSCR9
+  // assign rw_collision = mubi4_test_true_loose(mubi4_and_hi(write_en_q, read_en_buf));
+
+`else
   assign rw_collision = mubi4_test_true_loose(mubi4_and_hi(write_en_q, read_en_buf));
+`endif
 
   // Write currently processed inside this module. Although we are sending an immediate d_valid
   // back to the host, the write could take longer due to the scrambling.
+`ifdef BUGNUMPRIMSCR13
+  assign write_pending_o = macro_write & mubi4_test_true_loose(write_en_buf_d);
+`elsif BUGNUMPRIMSCR14
+  assign write_pending_o = ~macro_write | mubi4_test_true_loose(write_en_buf_d);
+`elsif BUGNUMPRIMSCR8T
+  assign write_pending_o = '0;
+`elsif BUGNUMPRIMSCR9T
+  // not assign
+`else
   assign write_pending_o = macro_write | mubi4_test_true_loose(write_en_buf_d);
-
+`endif
   // When a read is followed after a write with the same address, we return the data from the
   // holding register.
-  assign wr_collision_o = mubi4_test_true_loose(addr_collision_q);
+`ifdef BUGNUMPRIMSCR15
+  assign wr_collision_o = ~mubi4_test_true_loose(addr_collision_q);
 
+`elsif BUGNUMPRIMSCR10T
+  // assign wr_collision_o = mubi4_test_true_loose(addr_collision_q);
+`else
+  assign wr_collision_o = mubi4_test_true_loose(addr_collision_q);
+`endif
   ////////////////////////
   // Address Scrambling //
   ////////////////////////
 
   // We only select the pending write address in case there is no incoming read transaction.
   logic [AddrWidth-1:0] addr_mux;
-  assign addr_mux = (mubi4_test_true_loose(read_en_buf)) ? addr_scr : waddr_scr_q;
+`ifdef BUGNUMPRIMSCR16
+  assign addr_mux = (mubi4_test_true_loose(read_en_buf)) ? waddr_scr_q : addr_scr;
+`elsif BUGNUMPRIMSCR17
+  // assign addr_mux = (mubi4_test_true_loose(read_en_buf)) ? addr_scr : waddr_scr_q;
+`elsif BUGNUMPRIMSCR11T
+  assign addr_mux = '0;
 
+`else
+  assign addr_mux = (mubi4_test_true_loose(read_en_buf)) ? addr_scr : waddr_scr_q;
+`endif
   // This creates a bijective address mapping using a substitution / permutation network.
   if (NumAddrScrRounds > 0) begin : gen_addr_scr
     logic [AddrWidth-1:0] addr_scr_nonce;
-    assign addr_scr_nonce = nonce_i[NonceWidth - AddrWidth +: AddrWidth];
+    assign addr_scr_nonce = nonce_i[NonceWidth-AddrWidth+:AddrWidth];
 
     prim_subst_perm #(
-      .DataWidth ( AddrWidth        ),
-      .NumRounds ( NumAddrScrRounds ),
-      .Decrypt   ( 0                )
+        .DataWidth(AddrWidth),
+        .NumRounds(NumAddrScrRounds),
+        .Decrypt  (0)
     ) u_prim_subst_perm (
-      .data_i ( addr_i         ),
-      // Since the counter mode concatenates {nonce_i[NonceWidth-1-AddrWidth:0], addr} to form
-      // the IV, the upper AddrWidth bits of the nonce are not used and can be used for address
-      // scrambling. In cases where N parallel PRINCE blocks are used due to a data
-      // width > 64bit, N*AddrWidth nonce bits are left dangling.
-      .key_i  ( addr_scr_nonce ),
-      .data_o ( addr_scr       )
+        .data_i(addr_i),
+        // Since the counter mode concatenates {nonce_i[NonceWidth-1-AddrWidth:0], addr} to form
+        // the IV, the upper AddrWidth bits of the nonce are not used and can be used for address
+        // scrambling. In cases where N parallel PRINCE blocks are used due to a data
+        // width > 64bit, N*AddrWidth nonce bits are left dangling.
+        .key_i (addr_scr_nonce),
+        .data_o(addr_scr)
     );
   end else begin : gen_no_addr_scr
+
+
+`ifdef BUGNUMPRIMSCR12T
+    // assign addr_scr = addr_i;
+`else
     assign addr_scr = addr_i;
+`endif
   end
 
   // We latch the non-scrambled address for error reporting.
   logic [AddrWidth-1:0] raddr_q;
+
+
+
   assign raddr_o = 32'(raddr_q);
+
 
   //////////////////////////////////////////////
   // Keystream Generation for Data Scrambling //
@@ -242,36 +364,46 @@ module prim_ram_1p_scr import prim_ram_1p_pkg::*; #(
   logic [NumParScr*64-1:0] keystream;
   logic [NumParScr-1:0][DataNonceWidth-1:0] data_scr_nonce;
   for (genvar k = 0; k < NumParScr; k++) begin : gen_par_scr
-    assign data_scr_nonce[k] = nonce_i[k * DataNonceWidth +: DataNonceWidth];
+`ifdef BUGNUMPRIMSCR18
+    assign data_scr_nonce[k] = nonce_i[DataNonceWidth+:DataNonceWidth];
+`elsif BUGNUMPRIMSCR19
+    // assign data_scr_nonce[k] = nonce_i[k*DataNonceWidth+:DataNonceWidth];
+
+`elsif BUGNUMPRIMSCR13T
+    assign data_scr_nonce[k] = '0;
+
+`else
+    assign data_scr_nonce[k] = nonce_i[k*DataNonceWidth+:DataNonceWidth];
+`endif
 
     prim_prince #(
-      .DataWidth      (64),
-      .KeyWidth       (128),
-      .NumRoundsHalf  (NumPrinceRoundsHalf),
-      .UseOldKeySched (1'b0),
-      .HalfwayDataReg (1'b1), // instantiate a register halfway in the primitive
-      .HalfwayKeyReg  (1'b0)  // no need to instantiate a key register as the key remains static
+        .DataWidth(64),
+        .KeyWidth(128),
+        .NumRoundsHalf(NumPrinceRoundsHalf),
+        .UseOldKeySched(1'b0),
+        .HalfwayDataReg(1'b1),  // instantiate a register halfway in the primitive
+        .HalfwayKeyReg(1'b0)  // no need to instantiate a key register as the key remains static
     ) u_prim_prince (
-      .clk_i,
-      .rst_ni,
-      .valid_i ( gnt_o ),
-      // The IV is composed of a nonce and the row address
-      //.data_i  ( {nonce_i[k * (64 - AddrWidth) +: (64 - AddrWidth)], addr} ),
-      .data_i  ( {data_scr_nonce[k], addr_i} ),
-      // All parallel scramblers use the same key
-      .key_i,
-      // Since we operate in counter mode, this can always be set to encryption mode
-      .dec_i   ( 1'b0 ),
-      // Output keystream to be XOR'ed
-      .data_o  ( keystream[k * 64 +: 64] ),
-      .valid_o ( )
+        .clk_i,
+        .rst_ni,
+        .valid_i(gnt_o),
+        // The IV is composed of a nonce and the row address
+        //.data_i  ( {nonce_i[k * (64 - AddrWidth) +: (64 - AddrWidth)], addr} ),
+        .data_i ({data_scr_nonce[k], addr_i}),
+        // All parallel scramblers use the same key
+        .key_i,
+        // Since we operate in counter mode, this can always be set to encryption mode
+        .dec_i  (1'b0),
+        // Output keystream to be XOR'ed
+        .data_o (keystream[k*64+:64]),
+        .valid_o()
     );
 
     // Unread unused bits from keystream
-    if (k == NumParKeystr-1 && (Width % 64) > 0) begin : gen_unread_last
+    if (k == NumParKeystr - 1 && (Width % 64) > 0) begin : gen_unread_last
       localparam int UnusedWidth = 64 - (Width % 64);
       logic [UnusedWidth-1:0] unused_keystream;
-      assign unused_keystream = keystream[(k+1) * 64 - 1 -: UnusedWidth];
+      assign unused_keystream = keystream[(k+1)*64-1-:UnusedWidth];
     end
   end
 
@@ -303,18 +435,17 @@ module prim_ram_1p_scr import prim_ram_1p_pkg::*; #(
     // not as critical as the read path below in terms of timing.
     // Apply the keystream first
     logic [LocalWidth-1:0] wdata_xor;
-    assign wdata_xor = wdata_q[k*DiffWidth +: LocalWidth] ^
-                       keystream_repl[k*DiffWidth +: LocalWidth];
+    assign wdata_xor = wdata_q[k*DiffWidth+:LocalWidth] ^ keystream_repl[k*DiffWidth+:LocalWidth];
 
     // Byte aligned diffusion using a substitution / permutation network
     prim_subst_perm #(
-      .DataWidth ( LocalWidth       ),
-      .NumRounds ( NumDiffRounds ),
-      .Decrypt   ( 0                )
+        .DataWidth(LocalWidth),
+        .NumRounds(NumDiffRounds),
+        .Decrypt  (0)
     ) u_prim_subst_perm_enc (
-      .data_i ( wdata_xor ),
-      .key_i  ( '0        ),
-      .data_o ( wdata_scr_d[k*DiffWidth +: LocalWidth] )
+        .data_i(wdata_xor),
+        .key_i ('0),
+        .data_o(wdata_scr_d[k*DiffWidth+:LocalWidth])
     );
 
     // Read path. This is timing critical. The keystream XOR operation is performed last in order to
@@ -323,18 +454,17 @@ module prim_ram_1p_scr import prim_ram_1p_pkg::*; #(
     // Reverse diffusion first
     logic [LocalWidth-1:0] rdata_xor;
     prim_subst_perm #(
-      .DataWidth ( LocalWidth       ),
-      .NumRounds ( NumDiffRounds ),
-      .Decrypt   ( 1                )
+        .DataWidth(LocalWidth),
+        .NumRounds(NumDiffRounds),
+        .Decrypt  (1)
     ) u_prim_subst_perm_dec (
-      .data_i ( rdata_scr[k*DiffWidth +: LocalWidth] ),
-      .key_i  ( '0        ),
-      .data_o ( rdata_xor )
+        .data_i(rdata_scr[k*DiffWidth+:LocalWidth]),
+        .key_i ('0),
+        .data_o(rdata_xor)
     );
 
     // Apply Keystream, replicate it if needed
-    assign rdata[k*DiffWidth +: LocalWidth] = rdata_xor ^
-                                              keystream_repl[k*DiffWidth +: LocalWidth];
+    assign rdata[k*DiffWidth+:LocalWidth] = rdata_xor ^ keystream_repl[k*DiffWidth+:LocalWidth];
   end
 
   ////////////////////////////////////////////////
@@ -373,7 +503,7 @@ module prim_ram_1p_scr import prim_ram_1p_pkg::*; #(
   logic intg_error_r_q;
   logic [Width-1:0] wmask_q;
   always_comb begin : p_forward_mux
-    rdata_o = '0;
+    rdata_o  = '0;
     rvalid_o = 1'b0;
     // Kill the read response in case an integrity error was seen.
     if (!intg_error_r_q && mubi4_test_true_loose(rvalid_q)) begin
@@ -388,8 +518,8 @@ module prim_ram_1p_scr import prim_ram_1p_pkg::*; #(
             rdata_o[k] = rdata[k];
           end
         end
-      // regular reads. note that we just return zero in case
-      // an integrity error was signalled.
+        // regular reads. note that we just return zero in case
+        // an integrity error was signalled.
       end else begin
         rdata_o = rdata;
       end
@@ -401,64 +531,70 @@ module prim_ram_1p_scr import prim_ram_1p_pkg::*; #(
   ///////////////
   logic ram_alert;
 
-  assign alert_o = mubi4_test_invalid(write_en_q) | mubi4_test_invalid(addr_collision_q) |
-                   mubi4_test_invalid(write_pending_q) | mubi4_test_invalid(rvalid_q) |
-                   ram_alert;
+  assign alert_o = mubi4_test_invalid(
+      write_en_q
+  ) | mubi4_test_invalid(
+      addr_collision_q
+  ) | mubi4_test_invalid(
+      write_pending_q
+  ) | mubi4_test_invalid(
+      rvalid_q
+  ) | ram_alert;
 
   prim_flop #(
-    .Width(MuBi4Width),
-    .ResetValue(MuBi4Width'(MuBi4False))
+      .Width(MuBi4Width),
+      .ResetValue(MuBi4Width'(MuBi4False))
   ) u_write_en_flop (
-    .clk_i,
-    .rst_ni,
-    .d_i(MuBi4Width'(write_en_buf_d)),
-    .q_o({write_en_q})
+      .clk_i,
+      .rst_ni,
+      .d_i(MuBi4Width'(write_en_buf_d)),
+      .q_o({write_en_q})
   );
 
   prim_flop #(
-    .Width(MuBi4Width),
-    .ResetValue(MuBi4Width'(MuBi4False))
+      .Width(MuBi4Width),
+      .ResetValue(MuBi4Width'(MuBi4False))
   ) u_addr_collision_flop (
-    .clk_i,
-    .rst_ni,
-    .d_i(MuBi4Width'(addr_collision_d)),
-    .q_o({addr_collision_q})
+      .clk_i,
+      .rst_ni,
+      .d_i(MuBi4Width'(addr_collision_d)),
+      .q_o({addr_collision_q})
   );
 
   prim_flop #(
-    .Width(MuBi4Width),
-    .ResetValue(MuBi4Width'(MuBi4False))
+      .Width(MuBi4Width),
+      .ResetValue(MuBi4Width'(MuBi4False))
   ) u_write_pending_flop (
-    .clk_i,
-    .rst_ni,
-    .d_i(MuBi4Width'(write_scr_pending_d)),
-    .q_o({write_pending_q})
+      .clk_i,
+      .rst_ni,
+      .d_i(MuBi4Width'(write_scr_pending_d)),
+      .q_o({write_pending_q})
   );
 
   prim_flop #(
-    .Width(MuBi4Width),
-    .ResetValue(MuBi4Width'(MuBi4False))
+      .Width(MuBi4Width),
+      .ResetValue(MuBi4Width'(MuBi4False))
   ) u_rvalid_flop (
-    .clk_i,
-    .rst_ni,
-    .d_i(MuBi4Width'(read_en_buf)),
-    .q_o({rvalid_q})
+      .clk_i,
+      .rst_ni,
+      .d_i(MuBi4Width'(read_en_buf)),
+      .q_o({rvalid_q})
   );
 
-  assign read_en_b = mubi4_test_true_loose(read_en_buf);
+  assign read_en_b  = mubi4_test_true_loose(read_en_buf);
   assign write_en_b = mubi4_test_true_loose(write_en_buf_d);
 
   always_ff @(posedge clk_i or negedge rst_ni) begin : p_wdata_buf
     if (!rst_ni) begin
-      intg_error_r_q      <= 1'b0;
-      intg_error_w_q      <= 1'b0;
-      raddr_q             <= '0;
-      waddr_scr_q         <= '0;
-      wmask_q             <= '0;
-      wdata_q             <= '0;
-      wdata_scr_q         <= '0;
+      intg_error_r_q <= 1'b0;
+      intg_error_w_q <= 1'b0;
+      raddr_q        <= '0;
+      waddr_scr_q    <= '0;
+      wmask_q        <= '0;
+      wdata_q        <= '0;
+      wdata_scr_q    <= '0;
     end else begin
-      intg_error_r_q      <= intg_error_buf;
+      intg_error_r_q <= intg_error_buf;
 
       if (read_en_b) begin
         raddr_q <= addr_i;
@@ -480,26 +616,26 @@ module prim_ram_1p_scr import prim_ram_1p_pkg::*; #(
   //////////////////
 
   prim_ram_1p_adv #(
-    .Depth(Depth),
-    .Width(Width),
-    .DataBitsPerMask(DataBitsPerMask),
-    .EnableECC(1'b0),
-    .EnableParity(EnableParity),
-    .EnableInputPipeline(1'b0),
-    .EnableOutputPipeline(1'b0)
+      .Depth(Depth),
+      .Width(Width),
+      .DataBitsPerMask(DataBitsPerMask),
+      .EnableECC(1'b0),
+      .EnableParity(EnableParity),
+      .EnableInputPipeline(1'b0),
+      .EnableOutputPipeline(1'b0)
   ) u_prim_ram_1p_adv (
-    .clk_i,
-    .rst_ni,
-    .req_i    ( macro_req   ),
-    .write_i  ( macro_write ),
-    .addr_i   ( addr_mux    ),
-    .wdata_i  ( wdata_scr   ),
-    .wmask_i  ( wmask_q     ),
-    .rdata_o  ( rdata_scr   ),
-    .rvalid_o ( ),
-    .rerror_o,
-    .cfg_i,
-    .alert_o  ( ram_alert   )
+      .clk_i,
+      .rst_ni,
+      .req_i   (macro_req),
+      .write_i (macro_write),
+      .addr_i  (addr_mux),
+      .wdata_i (wdata_scr),
+      .wmask_i (wmask_q),
+      .rdata_o (rdata_scr),
+      .rvalid_o(),
+      .rerror_o,
+      .cfg_i,
+      .alert_o (ram_alert)
   );
 
   `include "prim_util_get_scramble_params.svh"
