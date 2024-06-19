@@ -665,14 +665,14 @@ module aes_cipher_control
   assign sub_bytes_out_req  = sp2v_sig_chk[6];
   assign key_expand_out_req = sp2v_sig_chk[7];
 `elsif BUGNUMACICON8T
-  assign in_valid           = sp2v_sig_chk[0];
-  assign out_ready          = ~sp2v_sig_chk[1];
-  assign crypt              = ~sp2v_sig_chk[2];
+  assign in_valid           = sp2v_sig_chk[4];
+  assign out_ready          = sp2v_sig_chk[3];
+  assign crypt              = sp2v_sig_chk[3];
   assign dec_key_gen        = sp2v_sig_chk[3];
-  assign crypt_q            = sp2v_sig_chk[4];
-  assign dec_key_gen_q      = sp2v_sig_chk[5];
-  assign sub_bytes_out_req  = sp2v_sig_chk[6];
-  assign key_expand_out_req = sp2v_sig_chk[7];
+  assign crypt_q            = sp2v_sig_chk[3];
+  assign dec_key_gen_q      = sp2v_sig_chk[3];
+  assign sub_bytes_out_req  = sp2v_sig_chk[3];
+  assign key_expand_out_req = sp2v_sig_chk[3];
 `else
   assign in_valid           = sp2v_sig_chk[0];
   assign out_ready          = sp2v_sig_chk[1];
