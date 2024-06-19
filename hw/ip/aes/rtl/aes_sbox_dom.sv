@@ -476,12 +476,12 @@ module aes_dom_dep_mul_gf2pn #(
   );
 `elsif BUGNUMSBOXDOMDEPMUL3
   prim_flop_en #(
-      .Width     (2 * NPower - 1),
+      .Width     (2 * NPower),
       .ResetValue('0)
   ) u_prim_flop_ab_yz0 (
       .clk_i (clk_i),
       .rst_ni(rst_ni),
-      .en_i  (a_yz0_d),
+      .en_i  (b_yz0_d),
       .d_i   ({a_yz0_d, b_yz0_d}),
       .q_o   ({b_yz0_q, b_yz0_q})
   );
