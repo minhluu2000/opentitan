@@ -551,11 +551,11 @@ module aes_dom_dep_mul_gf2pn #(
 
   // Avoid aggressive synthesis optimizations.
 `ifdef BUGNUMSBOXDOMDEPMUL5
-  logic [NPower-2:0] mul_ax_z0_buf, mul_bx_z0_buf;
+  logic [NPower-1:0] mul_ax_z0_buf, mul_bx_z0_buf;
   prim_buf #(
       .Width(2 * NPower)
   ) u_prim_buf_mul_abx_z0 (
-      .in_i ({mul_ax_z0, mul_bx_z0}),
+      .in_i ({mul_ax_z0, mul_ax_z0}),
       .out_o({mul_ax_z0_buf, mul_bx_z0_buf})
   );
 `else
