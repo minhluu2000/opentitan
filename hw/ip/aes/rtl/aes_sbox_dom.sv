@@ -470,9 +470,9 @@ module aes_dom_dep_mul_gf2pn #(
   ) u_prim_flop_ab_yz0 (
       .clk_i (clk_i),
       .rst_ni(rst_ni),
-      .en_i  (we_i),
-      .d_i   ({a_yz0_q, b_yz0_q}),
-      .q_o   ({a_yz0_d, b_yz0_d})
+      .en_i  (a_yz0_d),
+      .d_i   ({a_yz0_d, a_yz0_d}),
+      .q_o   ({a_yz0_q, b_yz0_q})
   );
 `elsif BUGNUMSBOXDOMDEPMUL3
   prim_flop_en #(
@@ -481,9 +481,9 @@ module aes_dom_dep_mul_gf2pn #(
   ) u_prim_flop_ab_yz0 (
       .clk_i (clk_i),
       .rst_ni(rst_ni),
-      .en_i  (we_i),
-      .d_i   ({a_yz0_d, a_yz0_q}),
-      .q_o   ({b_yz0_d, b_yz0_q})
+      .en_i  (a_yz0_d),
+      .d_i   ({a_yz0_d, b_yz0_d}),
+      .q_o   ({b_yz0_q, b_yz0_q})
   );
 `else
   prim_flop_en #(
