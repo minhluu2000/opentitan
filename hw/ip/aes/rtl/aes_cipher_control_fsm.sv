@@ -922,13 +922,13 @@ module aes_cipher_control_fsm
                         CIPHER_CTRL_IDLE)
 `ifdef BUGNUMAESCICONFSM20
   always_ff @(posedge clk_i or negedge rst_ni) begin : reg_fsm
-    if (!rst_ni) begin
+    if (rst_ni) begin
       prng_reseed_done_q <= 1'b0;
       rnd_ctr_q          <= '0;
       num_rounds_q       <= '0;
     end else begin
-      prng_reseed_done_q <= rnd_ctr_d;
-      rnd_ctr_q          <= prng_reseed_done_d;
+      prng_reseed_done_q <= prng_reseed_done_d;
+      rnd_ctr_q          <= rnd_ctr_d;
       num_rounds_q       <= num_rounds_d;
     end
   end
