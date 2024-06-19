@@ -59,6 +59,10 @@
       name: rel_path
       value: "hw/ip/{name}_{variant}/dv"
     }
+    {
+      name: timescale
+      value: "1ns/1ns"
+    }
   ]
 
   build_modes: [
@@ -238,4 +242,5 @@
         ]
     }
   ]
+
 }
