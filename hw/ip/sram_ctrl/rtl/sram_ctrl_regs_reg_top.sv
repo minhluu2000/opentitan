@@ -7,34 +7,34 @@
 `include "prim_assert.sv"
 
 module sram_ctrl_regs_reg_top (
-  input clk_i,
-  input rst_ni,
-  input  tlul_pkg::tl_h2d_t tl_i,
-  output tlul_pkg::tl_d2h_t tl_o,
-  // To HW
-  output sram_ctrl_reg_pkg::sram_ctrl_regs_reg2hw_t reg2hw, // Write
-  input  sram_ctrl_reg_pkg::sram_ctrl_regs_hw2reg_t hw2reg, // Read
+    input clk_i,
+    input rst_ni,
+    input tlul_pkg::tl_h2d_t tl_i,
+    output tlul_pkg::tl_d2h_t tl_o,
+    // To HW
+    output sram_ctrl_reg_pkg::sram_ctrl_regs_reg2hw_t reg2hw,  // Write
+    input sram_ctrl_reg_pkg::sram_ctrl_regs_hw2reg_t hw2reg,  // Read
 
-  // Integrity check errors
-  output logic intg_err_o
+    // Integrity check errors
+    output logic intg_err_o
 );
 
-  import sram_ctrl_reg_pkg::* ;
+  import sram_ctrl_reg_pkg::*;
 
   localparam int AW = 6;
   localparam int DW = 32;
-  localparam int DBW = DW/8;                    // Byte Width
+  localparam int DBW = DW / 8;  // Byte Width
 
   // register signals
   logic           reg_we;
   logic           reg_re;
-  logic [AW-1:0]  reg_addr;
-  logic [DW-1:0]  reg_wdata;
+  logic [ AW-1:0] reg_addr;
+  logic [ DW-1:0] reg_wdata;
   logic [DBW-1:0] reg_be;
-  logic [DW-1:0]  reg_rdata;
+  logic [ DW-1:0] reg_rdata;
   logic           reg_error;
 
-  logic          addrmiss, wr_err;
+  logic addrmiss, wr_err;
 
   logic [DW-1:0] reg_rdata_next;
   logic reg_busy;
@@ -46,21 +46,21 @@ module sram_ctrl_regs_reg_top (
   // incoming payload check
   logic intg_err;
   tlul_cmd_intg_chk u_chk (
-    .tl_i(tl_i),
-    .err_o(intg_err)
+      .tl_i (tl_i),
+      .err_o(intg_err)
   );
 
   // also check for spurious write enables
   logic reg_we_err;
   logic [8:0] reg_we_check;
   prim_reg_we_check #(
-    .OneHotWidth(9)
+      .OneHotWidth(9)
   ) u_prim_reg_we_check (
-    .clk_i(clk_i),
-    .rst_ni(rst_ni),
-    .oh_i  (reg_we_check),
-    .en_i  (reg_we && !addrmiss),
-    .err_o (reg_we_err)
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
+      .oh_i  (reg_we_check),
+      .en_i  (reg_we && !addrmiss),
+      .err_o (reg_we_err)
   );
 
   logic err_q;
@@ -79,44 +79,63 @@ module sram_ctrl_regs_reg_top (
   // outgoing integrity generation
   tlul_pkg::tl_d2h_t tl_o_pre;
   tlul_rsp_intg_gen #(
-    .EnableRspIntgGen(1),
-    .EnableDataIntgGen(1)
+      .EnableRspIntgGen (1),
+      .EnableDataIntgGen(1)
   ) u_rsp_intg_gen (
-    .tl_i(tl_o_pre),
-    .tl_o(tl_o)
+      .tl_i(tl_o_pre),
+      .tl_o(tl_o)
   );
-
+`ifdef BUGNUMSRAMREGREG1
+  assign tl_reg_h2d = '0;
+  assign tl_o_pre   = tl_reg_d2h;
+`elsif BUGNUMSRAMREGREG2
+  assign tl_reg_h2d = tl_i;
+  assign tl_o_pre   = tl_reg_h2d;
+`else
   assign tl_reg_h2d = tl_i;
   assign tl_o_pre   = tl_reg_d2h;
-
+`endif
   tlul_adapter_reg #(
-    .RegAw(AW),
-    .RegDw(DW),
-    .EnableDataIntgGen(0)
+      .RegAw(AW),
+      .RegDw(DW),
+      .EnableDataIntgGen(0)
   ) u_reg_if (
-    .clk_i  (clk_i),
-    .rst_ni (rst_ni),
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
 
-    .tl_i (tl_reg_h2d),
-    .tl_o (tl_reg_d2h),
+      .tl_i(tl_reg_h2d),
+      .tl_o(tl_reg_d2h),
 
-    .en_ifetch_i(prim_mubi_pkg::MuBi4False),
-    .intg_error_o(),
+      .en_ifetch_i (prim_mubi_pkg::MuBi4False),
+      .intg_error_o(),
 
-    .we_o    (reg_we),
-    .re_o    (reg_re),
-    .addr_o  (reg_addr),
-    .wdata_o (reg_wdata),
-    .be_o    (reg_be),
-    .busy_i  (reg_busy),
-    .rdata_i (reg_rdata),
-    .error_i (reg_error)
+      .we_o   (reg_we),
+      .re_o   (reg_re),
+      .addr_o (reg_addr),
+      .wdata_o(reg_wdata),
+      .be_o   (reg_be),
+      .busy_i (reg_busy),
+      .rdata_i(reg_rdata),
+      .error_i(reg_error)
   );
 
   // cdc oversampling signals
-
-  assign reg_rdata = reg_rdata_next ;
+`ifdef BUGNUMSRAMREGREG3
+  assign reg_rdata = ~reg_rdata_next;
   assign reg_error = addrmiss | wr_err | intg_err;
+  assign reg_rdata = reg_rdata_next;
+  //assign reg_error = addrmiss & wr_err & intg_err;
+`elsif BUGNUMSRAMREGREG4
+  //not assign reg_rdata 
+  assign reg_error = addrmiss | wr_err | intg_err;
+`elsif BUGNUMSRAMREGREG4T
+  assign reg_rdata = '0;
+  assign reg_error = addrmiss | wr_err | intg_err;
+`else
+  assign reg_rdata = reg_rdata_next;
+  assign reg_error = addrmiss | wr_err | intg_err;
+`endif
+
 
   // Define SW related signals
   // Format: <reg>_<field>_{wd|we|qs}
@@ -157,19 +176,24 @@ module sram_ctrl_regs_reg_top (
   // R[alert_test]: V(True)
   logic alert_test_qe;
   logic [0:0] alert_test_flds_we;
+`ifdef BUGNUMSRAMREGREG5
+  // assign alert_test_qe = &alert_test_flds_we;
+`else
   assign alert_test_qe = &alert_test_flds_we;
+`endif
+
   prim_subreg_ext #(
-    .DW    (1)
+      .DW(1)
   ) u_alert_test (
-    .re     (1'b0),
-    .we     (alert_test_we),
-    .wd     (alert_test_wd),
-    .d      ('0),
-    .qre    (),
-    .qe     (alert_test_flds_we[0]),
-    .q      (reg2hw.alert_test.q),
-    .ds     (),
-    .qs     ()
+      .re (1'b0),
+      .we (alert_test_we),
+      .wd (alert_test_wd),
+      .d  ('0),
+      .qre(),
+      .qe (alert_test_flds_we[0]),
+      .q  (reg2hw.alert_test.q),
+      .ds (),
+      .qs ()
   );
   assign reg2hw.alert_test.qe = alert_test_qe;
 
@@ -177,305 +201,314 @@ module sram_ctrl_regs_reg_top (
   // R[status]: V(False)
   //   F[bus_integ_error]: 0:0
   prim_subreg #(
-    .DW      (1),
-    .SwAccess(prim_subreg_pkg::SwAccessRO),
-    .RESVAL  (1'h0),
-    .Mubi    (1'b0)
+      .DW      (1),
+      .SwAccess(prim_subreg_pkg::SwAccessRO),
+      .RESVAL  (1'h0),
+      .Mubi    (1'b0)
   ) u_status_bus_integ_error (
-    .clk_i   (clk_i),
-    .rst_ni  (rst_ni),
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
 
-    // from register interface
-    .we     (1'b0),
-    .wd     ('0),
+      // from register interface
+      .we(1'b0),
+      .wd('0),
 
-    // from internal hardware
-    .de     (hw2reg.status.bus_integ_error.de),
-    .d      (hw2reg.status.bus_integ_error.d),
+      // from internal hardware
+      .de(hw2reg.status.bus_integ_error.de),
+      .d (hw2reg.status.bus_integ_error.d),
 
-    // to internal hardware
-    .qe     (),
-    .q      (reg2hw.status.bus_integ_error.q),
-    .ds     (),
+      // to internal hardware
+      .qe(),
+      .q (reg2hw.status.bus_integ_error.q),
+      .ds(),
 
-    // to register interface (read)
-    .qs     (status_bus_integ_error_qs)
+      // to register interface (read)
+      .qs(status_bus_integ_error_qs)
   );
 
   //   F[init_error]: 1:1
   prim_subreg #(
-    .DW      (1),
-    .SwAccess(prim_subreg_pkg::SwAccessRO),
-    .RESVAL  (1'h0),
-    .Mubi    (1'b0)
+      .DW      (1),
+      .SwAccess(prim_subreg_pkg::SwAccessRO),
+      .RESVAL  (1'h0),
+      .Mubi    (1'b0)
   ) u_status_init_error (
-    .clk_i   (clk_i),
-    .rst_ni  (rst_ni),
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
 
-    // from register interface
-    .we     (1'b0),
-    .wd     ('0),
+      // from register interface
+      .we(1'b0),
+      .wd('0),
 
-    // from internal hardware
-    .de     (hw2reg.status.init_error.de),
-    .d      (hw2reg.status.init_error.d),
+      // from internal hardware
+      .de(hw2reg.status.init_error.de),
+      .d (hw2reg.status.init_error.d),
 
-    // to internal hardware
-    .qe     (),
-    .q      (reg2hw.status.init_error.q),
-    .ds     (),
+      // to internal hardware
+      .qe(),
+      .q (reg2hw.status.init_error.q),
+      .ds(),
 
-    // to register interface (read)
-    .qs     (status_init_error_qs)
+      // to register interface (read)
+      .qs(status_init_error_qs)
   );
 
   //   F[escalated]: 2:2
   prim_subreg #(
-    .DW      (1),
-    .SwAccess(prim_subreg_pkg::SwAccessRO),
-    .RESVAL  (1'h0),
-    .Mubi    (1'b0)
+      .DW      (1),
+      .SwAccess(prim_subreg_pkg::SwAccessRO),
+      .RESVAL  (1'h0),
+      .Mubi    (1'b0)
   ) u_status_escalated (
-    .clk_i   (clk_i),
-    .rst_ni  (rst_ni),
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
 
-    // from register interface
-    .we     (1'b0),
-    .wd     ('0),
+      // from register interface
+      .we(1'b0),
+      .wd('0),
 
-    // from internal hardware
-    .de     (hw2reg.status.escalated.de),
-    .d      (hw2reg.status.escalated.d),
+      // from internal hardware
+      .de(hw2reg.status.escalated.de),
+      .d (hw2reg.status.escalated.d),
 
-    // to internal hardware
-    .qe     (),
-    .q      (reg2hw.status.escalated.q),
-    .ds     (),
+      // to internal hardware
+      .qe(),
+      .q (reg2hw.status.escalated.q),
+      .ds(),
 
-    // to register interface (read)
-    .qs     (status_escalated_qs)
+      // to register interface (read)
+      .qs(status_escalated_qs)
   );
 
   //   F[scr_key_valid]: 3:3
   prim_subreg #(
-    .DW      (1),
-    .SwAccess(prim_subreg_pkg::SwAccessRO),
-    .RESVAL  (1'h0),
-    .Mubi    (1'b0)
+      .DW      (1),
+      .SwAccess(prim_subreg_pkg::SwAccessRO),
+      .RESVAL  (1'h0),
+      .Mubi    (1'b0)
   ) u_status_scr_key_valid (
-    .clk_i   (clk_i),
-    .rst_ni  (rst_ni),
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
 
-    // from register interface
-    .we     (1'b0),
-    .wd     ('0),
+      // from register interface
+      .we(1'b0),
+      .wd('0),
 
-    // from internal hardware
-    .de     (hw2reg.status.scr_key_valid.de),
-    .d      (hw2reg.status.scr_key_valid.d),
+      // from internal hardware
+      .de(hw2reg.status.scr_key_valid.de),
+      .d (hw2reg.status.scr_key_valid.d),
 
-    // to internal hardware
-    .qe     (),
-    .q      (),
-    .ds     (),
+      // to internal hardware
+      .qe(),
+      .q (),
+      .ds(),
 
-    // to register interface (read)
-    .qs     (status_scr_key_valid_qs)
+      // to register interface (read)
+      .qs(status_scr_key_valid_qs)
   );
 
   //   F[scr_key_seed_valid]: 4:4
   prim_subreg #(
-    .DW      (1),
-    .SwAccess(prim_subreg_pkg::SwAccessRO),
-    .RESVAL  (1'h0),
-    .Mubi    (1'b0)
+      .DW      (1),
+      .SwAccess(prim_subreg_pkg::SwAccessRO),
+      .RESVAL  (1'h0),
+      .Mubi    (1'b0)
   ) u_status_scr_key_seed_valid (
-    .clk_i   (clk_i),
-    .rst_ni  (rst_ni),
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
 
-    // from register interface
-    .we     (1'b0),
-    .wd     ('0),
+      // from register interface
+      .we(1'b0),
+      .wd('0),
 
-    // from internal hardware
-    .de     (hw2reg.status.scr_key_seed_valid.de),
-    .d      (hw2reg.status.scr_key_seed_valid.d),
+      // from internal hardware
+      .de(hw2reg.status.scr_key_seed_valid.de),
+      .d (hw2reg.status.scr_key_seed_valid.d),
 
-    // to internal hardware
-    .qe     (),
-    .q      (reg2hw.status.scr_key_seed_valid.q),
-    .ds     (),
+      // to internal hardware
+      .qe(),
+      .q (reg2hw.status.scr_key_seed_valid.q),
+      .ds(),
 
-    // to register interface (read)
-    .qs     (status_scr_key_seed_valid_qs)
+      // to register interface (read)
+      .qs(status_scr_key_seed_valid_qs)
   );
 
   //   F[init_done]: 5:5
   prim_subreg #(
-    .DW      (1),
-    .SwAccess(prim_subreg_pkg::SwAccessRO),
-    .RESVAL  (1'h0),
-    .Mubi    (1'b0)
+      .DW      (1),
+      .SwAccess(prim_subreg_pkg::SwAccessRO),
+      .RESVAL  (1'h0),
+      .Mubi    (1'b0)
   ) u_status_init_done (
-    .clk_i   (clk_i),
-    .rst_ni  (rst_ni),
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
 
-    // from register interface
-    .we     (1'b0),
-    .wd     ('0),
+      // from register interface
+      .we(1'b0),
+      .wd('0),
 
-    // from internal hardware
-    .de     (hw2reg.status.init_done.de),
-    .d      (hw2reg.status.init_done.d),
+      // from internal hardware
+      .de(hw2reg.status.init_done.de),
+      .d (hw2reg.status.init_done.d),
 
-    // to internal hardware
-    .qe     (),
-    .q      (reg2hw.status.init_done.q),
-    .ds     (),
+      // to internal hardware
+      .qe(),
+      .q (reg2hw.status.init_done.q),
+      .ds(),
 
-    // to register interface (read)
-    .qs     (status_init_done_qs)
+      // to register interface (read)
+      .qs(status_init_done_qs)
   );
 
   //   F[readback_error]: 6:6
   prim_subreg #(
-    .DW      (1),
-    .SwAccess(prim_subreg_pkg::SwAccessRO),
-    .RESVAL  (1'h0),
-    .Mubi    (1'b0)
+      .DW      (1),
+      .SwAccess(prim_subreg_pkg::SwAccessRO),
+      .RESVAL  (1'h0),
+      .Mubi    (1'b0)
   ) u_status_readback_error (
-    .clk_i   (clk_i),
-    .rst_ni  (rst_ni),
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
 
-    // from register interface
-    .we     (1'b0),
-    .wd     ('0),
+      // from register interface
+      .we(1'b0),
+      .wd('0),
 
-    // from internal hardware
-    .de     (hw2reg.status.readback_error.de),
-    .d      (hw2reg.status.readback_error.d),
+      // from internal hardware
+      .de(hw2reg.status.readback_error.de),
+      .d (hw2reg.status.readback_error.d),
 
-    // to internal hardware
-    .qe     (),
-    .q      (reg2hw.status.readback_error.q),
-    .ds     (),
+      // to internal hardware
+      .qe(),
+      .q (reg2hw.status.readback_error.q),
+      .ds(),
 
-    // to register interface (read)
-    .qs     (status_readback_error_qs)
+      // to register interface (read)
+      .qs(status_readback_error_qs)
   );
 
   //   F[sram_alert]: 7:7
   prim_subreg #(
-    .DW      (1),
-    .SwAccess(prim_subreg_pkg::SwAccessRO),
-    .RESVAL  (1'h0),
-    .Mubi    (1'b0)
+      .DW      (1),
+      .SwAccess(prim_subreg_pkg::SwAccessRO),
+      .RESVAL  (1'h0),
+      .Mubi    (1'b0)
   ) u_status_sram_alert (
-    .clk_i   (clk_i),
-    .rst_ni  (rst_ni),
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
 
-    // from register interface
-    .we     (1'b0),
-    .wd     ('0),
+      // from register interface
+      .we(1'b0),
+      .wd('0),
 
-    // from internal hardware
-    .de     (hw2reg.status.sram_alert.de),
-    .d      (hw2reg.status.sram_alert.d),
+      // from internal hardware
+      .de(hw2reg.status.sram_alert.de),
+      .d (hw2reg.status.sram_alert.d),
 
-    // to internal hardware
-    .qe     (),
-    .q      (reg2hw.status.sram_alert.q),
-    .ds     (),
+      // to internal hardware
+      .qe(),
+      .q (reg2hw.status.sram_alert.q),
+      .ds(),
 
-    // to register interface (read)
-    .qs     (status_sram_alert_qs)
+      // to register interface (read)
+      .qs(status_sram_alert_qs)
   );
 
 
   // R[exec_regwen]: V(False)
   prim_subreg #(
-    .DW      (1),
-    .SwAccess(prim_subreg_pkg::SwAccessW0C),
-    .RESVAL  (1'h1),
-    .Mubi    (1'b0)
+      .DW      (1),
+      .SwAccess(prim_subreg_pkg::SwAccessW0C),
+      .RESVAL  (1'h1),
+      .Mubi    (1'b0)
   ) u_exec_regwen (
-    .clk_i   (clk_i),
-    .rst_ni  (rst_ni),
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
 
-    // from register interface
-    .we     (exec_regwen_we),
-    .wd     (exec_regwen_wd),
+      // from register interface
+      .we(exec_regwen_we),
+      .wd(exec_regwen_wd),
 
-    // from internal hardware
-    .de     (1'b0),
-    .d      ('0),
+      // from internal hardware
+      .de(1'b0),
+      .d ('0),
 
-    // to internal hardware
-    .qe     (),
-    .q      (),
-    .ds     (),
+      // to internal hardware
+      .qe(),
+      .q (),
+      .ds(),
 
-    // to register interface (read)
-    .qs     (exec_regwen_qs)
+      // to register interface (read)
+      .qs(exec_regwen_qs)
   );
 
 
   // R[exec]: V(False)
   // Create REGWEN-gated WE signal
   logic exec_gated_we;
+`ifdef BUGNUMSRAMREGREG6
+  assign exec_gated_we = exec_we ^ exec_regwen_qs;
+`elsif BUGNUMSRAMREGREG7
+  // assign exec_gated_we = exec_we & exec_regwen_qs;
+`elsif BUGNUMSRAMREGREG3T
+  assign exec_gated_we = 1'b0;
+`else
   assign exec_gated_we = exec_we & exec_regwen_qs;
+`endif
+
   prim_subreg #(
-    .DW      (4),
-    .SwAccess(prim_subreg_pkg::SwAccessRW),
-    .RESVAL  (4'h9),
-    .Mubi    (1'b1)
+      .DW      (4),
+      .SwAccess(prim_subreg_pkg::SwAccessRW),
+      .RESVAL  (4'h9),
+      .Mubi    (1'b1)
   ) u_exec (
-    .clk_i   (clk_i),
-    .rst_ni  (rst_ni),
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
 
-    // from register interface
-    .we     (exec_gated_we),
-    .wd     (exec_wd),
+      // from register interface
+      .we(exec_gated_we),
+      .wd(exec_wd),
 
-    // from internal hardware
-    .de     (1'b0),
-    .d      ('0),
+      // from internal hardware
+      .de(1'b0),
+      .d ('0),
 
-    // to internal hardware
-    .qe     (),
-    .q      (reg2hw.exec.q),
-    .ds     (),
+      // to internal hardware
+      .qe(),
+      .q (reg2hw.exec.q),
+      .ds(),
 
-    // to register interface (read)
-    .qs     (exec_qs)
+      // to register interface (read)
+      .qs(exec_qs)
   );
 
 
   // R[ctrl_regwen]: V(False)
   prim_subreg #(
-    .DW      (1),
-    .SwAccess(prim_subreg_pkg::SwAccessW0C),
-    .RESVAL  (1'h1),
-    .Mubi    (1'b0)
+      .DW      (1),
+      .SwAccess(prim_subreg_pkg::SwAccessW0C),
+      .RESVAL  (1'h1),
+      .Mubi    (1'b0)
   ) u_ctrl_regwen (
-    .clk_i   (clk_i),
-    .rst_ni  (rst_ni),
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
 
-    // from register interface
-    .we     (ctrl_regwen_we),
-    .wd     (ctrl_regwen_wd),
+      // from register interface
+      .we(ctrl_regwen_we),
+      .wd(ctrl_regwen_wd),
 
-    // from internal hardware
-    .de     (1'b0),
-    .d      ('0),
+      // from internal hardware
+      .de(1'b0),
+      .d ('0),
 
-    // to internal hardware
-    .qe     (),
-    .q      (),
-    .ds     (),
+      // to internal hardware
+      .qe(),
+      .q (),
+      .ds(),
 
-    // to register interface (read)
-    .qs     (ctrl_regwen_qs)
+      // to register interface (read)
+      .qs(ctrl_regwen_qs)
   );
 
 
@@ -483,164 +516,243 @@ module sram_ctrl_regs_reg_top (
   logic ctrl_qe;
   logic [1:0] ctrl_flds_we;
   prim_flop #(
-    .Width(1),
-    .ResetValue(0)
+      .Width(1),
+      .ResetValue(0)
   ) u_ctrl0_qe (
-    .clk_i(clk_i),
-    .rst_ni(rst_ni),
-    .d_i(&ctrl_flds_we),
-    .q_o(ctrl_qe)
+      .clk_i(clk_i),
+      .rst_ni(rst_ni),
+      .d_i(&ctrl_flds_we),
+      .q_o(ctrl_qe)
   );
   // Create REGWEN-gated WE signal
   logic ctrl_gated_we;
+`ifdef BUGNUMSRAMREGREG8
+  //assign ctrl_gated_we = ctrl_we & ctrl_regwen_qs;
+`elsif BUGNUMSRAMREGREG9
+  assign ctrl_gated_we = 1'b1;
+`elsif BUGNUMSRAMREGREG2T
+  assign ctrl_gated_we = ctrl_we | ctrl_regwen_qs;
+`else
   assign ctrl_gated_we = ctrl_we & ctrl_regwen_qs;
+`endif
   //   F[renew_scr_key]: 0:0
   prim_subreg #(
-    .DW      (1),
-    .SwAccess(prim_subreg_pkg::SwAccessWO),
-    .RESVAL  (1'h0),
-    .Mubi    (1'b0)
+      .DW      (1),
+      .SwAccess(prim_subreg_pkg::SwAccessWO),
+      .RESVAL  (1'h0),
+      .Mubi    (1'b0)
   ) u_ctrl_renew_scr_key (
-    .clk_i   (clk_i),
-    .rst_ni  (rst_ni),
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
 
-    // from register interface
-    .we     (ctrl_gated_we),
-    .wd     (ctrl_renew_scr_key_wd),
+      // from register interface
+      .we(ctrl_gated_we),
+      .wd(ctrl_renew_scr_key_wd),
 
-    // from internal hardware
-    .de     (1'b0),
-    .d      ('0),
+      // from internal hardware
+      .de(1'b0),
+      .d ('0),
 
-    // to internal hardware
-    .qe     (ctrl_flds_we[0]),
-    .q      (reg2hw.ctrl.renew_scr_key.q),
-    .ds     (),
+      // to internal hardware
+      .qe(ctrl_flds_we[0]),
+      .q (reg2hw.ctrl.renew_scr_key.q),
+      .ds(),
 
-    // to register interface (read)
-    .qs     ()
+      // to register interface (read)
+      .qs()
   );
+`ifdef BUGNUMSRAMREGREG10
+  assign reg2hw.ctrl.renew_scr_key.qe = ~ctrl_qe;
+`elsif BUGNUMSRAMREGREG11
+  // not assign reg2hw
+`elsif BUGNUMSRAMREGREG1T
+  assign reg2hw.ctrl.renew_scr_key.qe = '0;
+`else
   assign reg2hw.ctrl.renew_scr_key.qe = ctrl_qe;
-
+`endif
   //   F[init]: 1:1
   prim_subreg #(
-    .DW      (1),
-    .SwAccess(prim_subreg_pkg::SwAccessWO),
-    .RESVAL  (1'h0),
-    .Mubi    (1'b0)
+      .DW      (1),
+      .SwAccess(prim_subreg_pkg::SwAccessWO),
+      .RESVAL  (1'h0),
+      .Mubi    (1'b0)
   ) u_ctrl_init (
-    .clk_i   (clk_i),
-    .rst_ni  (rst_ni),
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
 
-    // from register interface
-    .we     (ctrl_gated_we),
-    .wd     (ctrl_init_wd),
+      // from register interface
+      .we(ctrl_gated_we),
+      .wd(ctrl_init_wd),
 
-    // from internal hardware
-    .de     (1'b0),
-    .d      ('0),
+      // from internal hardware
+      .de(1'b0),
+      .d ('0),
 
-    // to internal hardware
-    .qe     (ctrl_flds_we[1]),
-    .q      (reg2hw.ctrl.init.q),
-    .ds     (),
+      // to internal hardware
+      .qe(ctrl_flds_we[1]),
+      .q (reg2hw.ctrl.init.q),
+      .ds(),
 
-    // to register interface (read)
-    .qs     ()
+      // to register interface (read)
+      .qs()
   );
+`ifdef BUGNUMSRAMREGREG12
+  //assign reg2hw.ctrl.init.qe = ctrl_qe;
+`elsif BUGNUMSRAMREGREG13
+  assign reg2hw.ctrl.init.qe = ~ctrl_qe;
+`elsif BUGNUMSRAMREGREG5T
+  assign reg2hw.ctrl.init.qe = '0;
+`else
   assign reg2hw.ctrl.init.qe = ctrl_qe;
-
+`endif
 
   // R[scr_key_rotated]: V(False)
   prim_subreg #(
-    .DW      (4),
-    .SwAccess(prim_subreg_pkg::SwAccessW1C),
-    .RESVAL  (4'h9),
-    .Mubi    (1'b1)
+      .DW      (4),
+      .SwAccess(prim_subreg_pkg::SwAccessW1C),
+      .RESVAL  (4'h9),
+      .Mubi    (1'b1)
   ) u_scr_key_rotated (
-    .clk_i   (clk_i),
-    .rst_ni  (rst_ni),
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
 
-    // from register interface
-    .we     (scr_key_rotated_we),
-    .wd     (scr_key_rotated_wd),
+      // from register interface
+      .we(scr_key_rotated_we),
+      .wd(scr_key_rotated_wd),
 
-    // from internal hardware
-    .de     (hw2reg.scr_key_rotated.de),
-    .d      (hw2reg.scr_key_rotated.d),
+      // from internal hardware
+      .de(hw2reg.scr_key_rotated.de),
+      .d (hw2reg.scr_key_rotated.d),
 
-    // to internal hardware
-    .qe     (),
-    .q      (),
-    .ds     (),
+      // to internal hardware
+      .qe(),
+      .q (),
+      .ds(),
 
-    // to register interface (read)
-    .qs     (scr_key_rotated_qs)
+      // to register interface (read)
+      .qs(scr_key_rotated_qs)
   );
 
 
   // R[readback_regwen]: V(False)
   prim_subreg #(
-    .DW      (1),
-    .SwAccess(prim_subreg_pkg::SwAccessW0C),
-    .RESVAL  (1'h1),
-    .Mubi    (1'b0)
+      .DW      (1),
+      .SwAccess(prim_subreg_pkg::SwAccessW0C),
+      .RESVAL  (1'h1),
+      .Mubi    (1'b0)
   ) u_readback_regwen (
-    .clk_i   (clk_i),
-    .rst_ni  (rst_ni),
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
 
-    // from register interface
-    .we     (readback_regwen_we),
-    .wd     (readback_regwen_wd),
+      // from register interface
+      .we(readback_regwen_we),
+      .wd(readback_regwen_wd),
 
-    // from internal hardware
-    .de     (1'b0),
-    .d      ('0),
+      // from internal hardware
+      .de(1'b0),
+      .d ('0),
 
-    // to internal hardware
-    .qe     (),
-    .q      (),
-    .ds     (),
+      // to internal hardware
+      .qe(),
+      .q (),
+      .ds(),
 
-    // to register interface (read)
-    .qs     (readback_regwen_qs)
+      // to register interface (read)
+      .qs(readback_regwen_qs)
   );
 
 
   // R[readback]: V(False)
   // Create REGWEN-gated WE signal
   logic readback_gated_we;
+`ifdef BUGNUMSRAMREGREG14
+  assign readback_gated_we = ~readback_we & ~readback_regwen_qs;
+`elsif BUGNUMSRAMREGREG15
+  assign readback_gated_we = readback_we | readback_regwen_qs;
+`elsif BUGNUMSRAMREGREG16
+  assign readback_gated_we = '0;
+`elsif BUGNUMSRAMREGREG6T
+  assign readback_gated_we = '1;
+`else
   assign readback_gated_we = readback_we & readback_regwen_qs;
+`endif
   prim_subreg #(
-    .DW      (4),
-    .SwAccess(prim_subreg_pkg::SwAccessRW),
-    .RESVAL  (4'h9),
-    .Mubi    (1'b1)
+      .DW      (4),
+      .SwAccess(prim_subreg_pkg::SwAccessRW),
+      .RESVAL  (4'h9),
+      .Mubi    (1'b1)
   ) u_readback (
-    .clk_i   (clk_i),
-    .rst_ni  (rst_ni),
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
 
-    // from register interface
-    .we     (readback_gated_we),
-    .wd     (readback_wd),
+      // from register interface
+      .we(readback_gated_we),
+      .wd(readback_wd),
 
-    // from internal hardware
-    .de     (1'b0),
-    .d      ('0),
+      // from internal hardware
+      .de(1'b0),
+      .d ('0),
 
-    // to internal hardware
-    .qe     (),
-    .q      (reg2hw.readback.q),
-    .ds     (),
+      // to internal hardware
+      .qe(),
+      .q (reg2hw.readback.q),
+      .ds(),
 
-    // to register interface (read)
-    .qs     (readback_qs)
+      // to register interface (read)
+      .qs(readback_qs)
   );
 
 
 
   logic [8:0] addr_hit;
   always_comb begin
+
+
+`ifdef BUGNUMSRAMREGREG17
+    addr_hit = '0;
+    addr_hit[0] = (reg_addr == SRAM_CTRL_ALERT_TEST_OFFSET);
+    addr_hit[1] = (reg_addr == SRAM_CTRL_STATUS_OFFSET);
+    // addr_hit[2] = (reg_addr == SRAM_CTRL_EXEC_REGWEN_OFFSET);
+    addr_hit[3] = (reg_addr == SRAM_CTRL_EXEC_OFFSET);
+    addr_hit[4] = (reg_addr == SRAM_CTRL_CTRL_REGWEN_OFFSET);
+    addr_hit[5] = (reg_addr == SRAM_CTRL_CTRL_OFFSET);
+    addr_hit[6] = (reg_addr == SRAM_CTRL_SCR_KEY_ROTATED_OFFSET);
+    addr_hit[7] = (reg_addr == SRAM_CTRL_READBACK_REGWEN_OFFSET);
+    addr_hit[8] = (reg_addr == SRAM_CTRL_READBACK_OFFSET);
+`elsif BUGNUMSRAMREGREG7T
+    addr_hit = '0;
+    addr_hit[0] = (reg_addr == SRAM_CTRL_ALERT_TEST_OFFSET);
+    addr_hit[1] = (reg_addr == SRAM_CTRL_STATUS_OFFSET);
+    addr_hit[2] = (reg_addr == SRAM_CTRL_EXEC_REGWEN_OFFSET);
+    addr_hit[3] = (reg_addr == SRAM_CTRL_EXEC_OFFSET);
+    addr_hit[4] = (reg_addr == SRAM_CTRL_CTRL_REGWEN_OFFSET);
+    addr_hit[5] = (reg_addr == SRAM_CTRL_CTRL_OFFSET);
+    addr_hit[6] = (reg_addr == SRAM_CTRL_SCR_KEY_ROTATED_OFFSET);
+    addr_hit[7] = (reg_addr == SRAM_CTRL_READBACK_REGWEN_OFFSET);
+    //  addr_hit[8] = (reg_addr == SRAM_CTRL_READBACK_OFFSET);
+`elsif BUGNUMSRAMREGREG8T
+    addr_hit = '0;
+    addr_hit[0] = (reg_addr == SRAM_CTRL_ALERT_TEST_OFFSET);
+    addr_hit[1] = (reg_addr == SRAM_CTRL_STATUS_OFFSET);
+    addr_hit[2] = (reg_addr == SRAM_CTRL_EXEC_REGWEN_OFFSET);
+    addr_hit[3] = (reg_addr == SRAM_CTRL_CTRL_REGWEN_OFFSET);
+    addr_hit[4] = (reg_addr == SRAM_CTRL_EXEC_OFFSET);
+    addr_hit[5] = (reg_addr == SRAM_CTRL_CTRL_OFFSET);
+    addr_hit[6] = (reg_addr == SRAM_CTRL_SCR_KEY_ROTATED_OFFSET);
+    addr_hit[7] = (reg_addr == SRAM_CTRL_READBACK_REGWEN_OFFSET);
+    addr_hit[8] = (reg_addr == SRAM_CTRL_READBACK_OFFSET);
+`elsif BUGNUMSRAMREGREG9T
+    addr_hit = '0;
+    addr_hit[0] = (reg_addr == SRAM_CTRL_ALERT_TEST_OFFSET);
+    addr_hit[1] = (reg_addr == SRAM_CTRL_STATUS_OFFSET);
+    addr_hit[2] = (reg_addr == SRAM_CTRL_EXEC_REGWEN_OFFSET);
+    addr_hit[3] = '0;
+    addr_hit[4] = (reg_addr == SRAM_CTRL_CTRL_REGWEN_OFFSET);
+    addr_hit[5] = (reg_addr == SRAM_CTRL_CTRL_OFFSET);
+    addr_hit[6] = '0;
+    addr_hit[7] = (reg_addr == SRAM_CTRL_READBACK_REGWEN_OFFSET);
+    addr_hit[8] = (reg_addr == SRAM_CTRL_READBACK_OFFSET);
+`else
     addr_hit = '0;
     addr_hit[0] = (reg_addr == SRAM_CTRL_ALERT_TEST_OFFSET);
     addr_hit[1] = (reg_addr == SRAM_CTRL_STATUS_OFFSET);
@@ -651,9 +763,16 @@ module sram_ctrl_regs_reg_top (
     addr_hit[6] = (reg_addr == SRAM_CTRL_SCR_KEY_ROTATED_OFFSET);
     addr_hit[7] = (reg_addr == SRAM_CTRL_READBACK_REGWEN_OFFSET);
     addr_hit[8] = (reg_addr == SRAM_CTRL_READBACK_OFFSET);
+`endif
   end
+`ifdef BUGNUMSRAMREGREG18
+  assign addrmiss = (reg_re || reg_we) ? |addr_hit : 1'b1;
+`elsif BUGNUMSRAMREGREG10T
+  //assign addrmiss = (reg_re || reg_we) ? ~|addr_hit : 1'b0;
 
-  assign addrmiss = (reg_re || reg_we) ? ~|addr_hit : 1'b0 ;
+`else
+  assign addrmiss = (reg_re || reg_we) ? ~|addr_hit : 1'b0;
+`endif
 
   // Check sub-word write is permitted
   always_comb begin
@@ -670,6 +789,66 @@ module sram_ctrl_regs_reg_top (
   end
 
   // Generate write-enables
+
+
+
+
+`ifdef BUGNUMSRAMREGREG19
+  assign alert_test_we = addr_hit[0] & reg_we & !reg_error;
+
+  assign alert_test_wd = reg_wdata[0];
+  assign exec_regwen_we = addr_hit[2] & reg_we & !reg_error;
+
+  assign exec_regwen_wd = reg_wdata[0];
+  assign exec_we = addr_hit[3] & reg_we & !reg_error;
+
+  // assign exec_wd = reg_wdata[3:0];
+  assign ctrl_regwen_we = addr_hit[4] & reg_we & !reg_error;
+
+  assign ctrl_regwen_wd = reg_wdata[0];
+  assign ctrl_we = addr_hit[5] & reg_we & !reg_error;
+
+  assign ctrl_renew_scr_key_wd = reg_wdata[0];
+
+  assign ctrl_init_wd = reg_wdata[1];
+  assign scr_key_rotated_we = addr_hit[6] & reg_we & !reg_error;
+
+  assign scr_key_rotated_wd = reg_wdata[3:0];
+  assign readback_regwen_we = addr_hit[7] & reg_we & !reg_error;
+
+  assign readback_regwen_wd = reg_wdata[0];
+  assign readback_we = addr_hit[8] & reg_we & !reg_error;
+
+  assign readback_wd = reg_wdata[3:0];
+`elsif BUGNUMSRAMREGREG11T
+  assign alert_test_we = addr_hit[0] & reg_we & !reg_error;
+
+  assign alert_test_wd = reg_wdata[0];
+  assign exec_regwen_we = addr_hit[2] & reg_we & !reg_error;
+
+  assign exec_regwen_wd = reg_wdata[0];
+  assign exec_we = addr_hit[3] & reg_we & !reg_error;
+
+  assign exec_wd = reg_wdata[3:0];
+  assign ctrl_regwen_we = addr_hit[4] & reg_we & !reg_error;
+
+  assign ctrl_regwen_wd = reg_wdata[0];
+  assign ctrl_we = addr_hit[5] & reg_we & !reg_error;
+
+  assign ctrl_renew_scr_key_wd = reg_wdata[0];
+
+  assign ctrl_init_wd = reg_wdata[1];
+  assign scr_key_rotated_we = addr_hit[6] & reg_we & !reg_error;
+
+  assign scr_key_rotated_wd = reg_wdata[3:0];
+  //assign readback_regwen_we = addr_hit[7] & reg_we & !reg_error;
+
+  assign readback_regwen_wd = reg_wdata[0];
+  assign readback_we = addr_hit[8] & reg_we & !reg_error;
+
+  assign readback_wd = reg_wdata[3:0];
+
+`else
   assign alert_test_we = addr_hit[0] & reg_we & !reg_error;
 
   assign alert_test_wd = reg_wdata[0];
@@ -696,7 +875,7 @@ module sram_ctrl_regs_reg_top (
   assign readback_we = addr_hit[8] & reg_we & !reg_error;
 
   assign readback_wd = reg_wdata[3:0];
-
+`endif
   // Assign write-enables to checker logic vector.
   always_comb begin
     reg_we_check = '0;
