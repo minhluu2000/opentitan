@@ -343,7 +343,7 @@ module aes_cipher_core
     );
 `elsif BUGNUMCICORE3T
     aes_prng_masking #(
-        .Width               (WidthPRDMasking - 1),
+        .Width               (WidthPRDMasking),
         .EntropyWidth        (EntropyWidth),
         .SecAllowForcingMasks(SecAllowForcingMasks),
         .SecSkipPRNGReseeding(SecSkipPRNGReseeding),
