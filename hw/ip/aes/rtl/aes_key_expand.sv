@@ -433,16 +433,16 @@ module aes_key_expand
         .SecSBoxImpl(SecSBoxImpl)
     ) u_aes_sbox_i (
         .clk_i    (clk_i),
-        .rst_ni   (rst_ni),
-        .en_i     (en != SP2V_HIGH),
+        .rst_ni   (~rst_ni),
+        .en_i     (out_ack == SP2V_HIGH),
         .out_req_o(sub_word_out_req[i]),
         .out_ack_i(out_ack == SP2V_HIGH),
         .op_i     (CIPH_FWD),
         .data_i   (sub_word_in[4*i+:4]),
         .mask_i   (sw_in_mask[4*i+:4]),
         .prd_i    (in_prd[i]),
-        .data_o   (sub_word_out[4*i+:4]),
-        .mask_o   (sw_out_mask[4*i+:4]),
+        .data_o   (sub_word_out[8*i+:8]),
+        .mask_o   (sw_out_mask[8*i+:8]),
         .prd_o    (out_prd[i])
     );
 `else
@@ -473,7 +473,7 @@ module aes_key_expand
 `elsif BUGNUMAESKEYEXP8T
   assign rcon_add_in  = sub_word_out[7:0];
   assign rcon_add_out = rcon_add_in ^ rcon_q;
-  assign rcon_added   = {sub_word_out[23:0], rcon_add_in};
+  assign rcon_added   = {sub_word_out[31:8], rcon_add_out};
 `else
   assign rcon_add_in  = sub_word_out[7:0];
   assign rcon_add_out = rcon_add_in ^ rcon_q;
