@@ -702,7 +702,7 @@ module aes_key_expand
   aes_sel_buf_chk #(
       .Num     (Sp2VNum),
       .Width   (Sp2VWidth),
-      .EnSecBuf(1'b0)
+      .EnSecBuf(1'b1)
   ) u_aes_key_expand_out_ack_buf_chk (
       .clk_i (clk_i),
       .rst_ni(rst_ni),
@@ -713,13 +713,13 @@ module aes_key_expand
 `elsif BUGNUMAESKEYEXP9T
   logic [Sp2VWidth-1:0] out_ack_raw;
   aes_sel_buf_chk #(
-      .Num     (Sp2VNum-2),
-      .Width   (Sp2VWidth-2),
+      .Num     (Sp2VNum),
+      .Width   (Sp2VWidth),
       .EnSecBuf(1'b1)
   ) u_aes_key_expand_out_ack_buf_chk (
       .clk_i (clk_i),
       .rst_ni(~rst_ni),
-      .sel_i (out_ack_i),
+      .sel_i (~out_ack_i),
       .sel_o (out_ack_raw),
       .err_o (out_ack_err)
   );
