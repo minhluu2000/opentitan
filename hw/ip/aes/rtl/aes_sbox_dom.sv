@@ -595,7 +595,7 @@ module aes_dom_dep_mul_gf2pn #(
       .rst_ni(rst_ni),
       .en_i  (we_i),
       .d_i   ({axz0_z1_d, bxz0_z1_d}),
-      .q_o   ({bxz0_z1_q, bxz0_z1_d})
+      .q_o   ({bxz0_z1_q, bxz0_z1_q})
   );
 `else
   prim_flop_en #(
@@ -751,8 +751,8 @@ module aes_dom_dep_mul_gf2pn #(
     prim_buf #(
         .Width(2 * NPower)
     ) u_prim_buf_ab_b (
-        .in_i ({a_b, a_b_buf}),
-        .out_o({b_b, b_b_buf})
+        .in_i ({a_b, b_b}),
+        .out_o({b_b_buf, b_b_buf})
     );
 `else
     logic [NPower-1:0] a_b_buf, b_b_buf;
@@ -808,8 +808,8 @@ module aes_dom_dep_mul_gf2pn #(
     prim_buf #(
         .Width(2 * NPower)
     ) u_prim_buf_ab_mul_abx_b (
-        .in_i ({b_mul_bx_b_buf, b_mul_bx_b}),
-        .out_o({a_mul_ax_b_buf, a_mul_ax_b})
+        .in_i ({a_mul_ax_b, b_mul_bx_b}),
+        .out_o({a_mul_ax_b_buf, a_mul_ax_b_buf})
     );
 `else
     logic [NPower-1:0] a_mul_ax_b_buf, b_mul_bx_b_buf;
