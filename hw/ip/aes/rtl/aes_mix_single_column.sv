@@ -54,8 +54,8 @@ module aes_mix_single_column (
     assign x_mul2[i] = aes_mul2(x[1]);
   end
 `elsif BUGNUMMIXSINGCOL2T
-  for (genvar i = 0; i < 4; i++) begin : gen_x_mul2
-    assign x_mul2[1] = aes_mul2(x[i]);
+  for (genvar i = 0; i < 2; i++) begin : gen_x_mul2
+    assign x_mul2[i] = aes_mul2(x[i]);
   end
 `else
   for (genvar i = 0; i < 4; i++) begin : gen_x_mul2
