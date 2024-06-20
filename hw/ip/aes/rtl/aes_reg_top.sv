@@ -7,38 +7,38 @@
 `include "prim_assert.sv"
 
 module aes_reg_top (
-  input clk_i,
-  input rst_ni,
-  input rst_shadowed_ni,
-  input  tlul_pkg::tl_h2d_t tl_i,
-  output tlul_pkg::tl_d2h_t tl_o,
-  // To HW
-  output aes_reg_pkg::aes_reg2hw_t reg2hw, // Write
-  input  aes_reg_pkg::aes_hw2reg_t hw2reg, // Read
+    input clk_i,
+    input rst_ni,
+    input rst_shadowed_ni,
+    input tlul_pkg::tl_h2d_t tl_i,
+    output tlul_pkg::tl_d2h_t tl_o,
+    // To HW
+    output aes_reg_pkg::aes_reg2hw_t reg2hw,  // Write
+    input aes_reg_pkg::aes_hw2reg_t hw2reg,  // Read
 
-  output logic shadowed_storage_err_o,
-  output logic shadowed_update_err_o,
+    output logic shadowed_storage_err_o,
+    output logic shadowed_update_err_o,
 
-  // Integrity check errors
-  output logic intg_err_o
+    // Integrity check errors
+    output logic intg_err_o
 );
 
-  import aes_reg_pkg::* ;
+  import aes_reg_pkg::*;
 
   localparam int AW = 8;
   localparam int DW = 32;
-  localparam int DBW = DW/8;                    // Byte Width
+  localparam int DBW = DW / 8;  // Byte Width
 
   // register signals
   logic           reg_we;
   logic           reg_re;
-  logic [AW-1:0]  reg_addr;
-  logic [DW-1:0]  reg_wdata;
+  logic [ AW-1:0] reg_addr;
+  logic [ DW-1:0] reg_wdata;
   logic [DBW-1:0] reg_be;
-  logic [DW-1:0]  reg_rdata;
+  logic [ DW-1:0] reg_rdata;
   logic           reg_error;
 
-  logic          addrmiss, wr_err;
+  logic addrmiss, wr_err;
 
   logic [DW-1:0] reg_rdata_next;
   logic reg_busy;
@@ -50,23 +50,65 @@ module aes_reg_top (
   // incoming payload check
   logic intg_err;
   tlul_cmd_intg_chk u_chk (
-    .tl_i(tl_i),
-    .err_o(intg_err)
+      .tl_i (tl_i),
+      .err_o(intg_err)
   );
 
-  // also check for spurious write enables
+  // also check for spurious write enables\
+`ifdef BUGNUMAESREGOP1
   logic reg_we_err;
   logic [33:0] reg_we_check;
   prim_reg_we_check #(
-    .OneHotWidth(34)
+      .OneHotWidth(4)
   ) u_prim_reg_we_check (
-    .clk_i(clk_i),
-    .rst_ni(rst_ni),
-    .oh_i  (reg_we_check),
-    .en_i  (reg_we && !addrmiss),
-    .err_o (reg_we_err)
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
+      .oh_i  (~reg_we_check),
+      .en_i  (reg_we || addrmiss),
+      .err_o (reg_we_err)
   );
+`else
+  logic reg_we_err;
+  logic [33:0] reg_we_check;
+  prim_reg_we_check #(
+      .OneHotWidth(34)
+  ) u_prim_reg_we_check (
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
+      .oh_i  (reg_we_check),
+      .en_i  (reg_we && !addrmiss),
+      .err_o (reg_we_err)
+  );
+`endif
 
+`ifdef BUGNUMAESREGOP2
+  logic err_q;
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (rst_ni) begin
+      err_q <= '0;
+    end else if (intg_err && reg_we_err) begin
+      err_q <= 1'b1;
+    end
+  end
+`elsif BUGNUMAESREGOP3
+  logic err_q;
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      err_q <= '1;
+    end else if (intg_err ^ reg_we_err) begin
+      err_q <= 1'b0;
+    end
+  end
+`elsif BUGNUMAESREGOP1T
+  logic err_q;
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (rst_ni) begin
+      err_q <= '0;
+    end else if (intg_err && reg_we_err) begin
+      err_q <= 1'b1;
+    end
+  end
+`else
   logic err_q;
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
@@ -75,52 +117,131 @@ module aes_reg_top (
       err_q <= 1'b1;
     end
   end
+`endif
 
   // integrity error output is permanent and should be used for alert generation
   // register errors are transactional
+`ifdef BUGNUMAESREGOP4
+  // assign intg_err_o = err_q;
+`else
   assign intg_err_o = err_q | intg_err | reg_we_err;
+`endif
 
   // outgoing integrity generation
+`ifdef BUGNUMAESREGOP5
   tlul_pkg::tl_d2h_t tl_o_pre;
   tlul_rsp_intg_gen #(
-    .EnableRspIntgGen(1),
-    .EnableDataIntgGen(1)
+      .EnableRspIntgGen (1),
+      .EnableDataIntgGen(1)
   ) u_rsp_intg_gen (
-    .tl_i(tl_o_pre),
-    .tl_o(tl_o)
+      .tl_i(tl_o),
+      .tl_o(tl_o)
   );
+`elsif BUGNUMAESREGOP2T
+  tlul_pkg::tl_d2h_t tl_o_pre;
+  tlul_rsp_intg_gen #(
+      .EnableRspIntgGen (0),
+      .EnableDataIntgGen(0)
+  ) u_rsp_intg_gen (
+      .tl_i(tl_o_pre),
+      .tl_o(tl_o)
+  );
+`else
+  tlul_pkg::tl_d2h_t tl_o_pre;
+  tlul_rsp_intg_gen #(
+      .EnableRspIntgGen (1),
+      .EnableDataIntgGen(1)
+  ) u_rsp_intg_gen (
+      .tl_i(tl_o_pre),
+      .tl_o(tl_o)
+  );
+`endif
 
   assign tl_reg_h2d = tl_i;
   assign tl_o_pre   = tl_reg_d2h;
 
+`ifdef BUGNUMAESREGOP6
   tlul_adapter_reg #(
-    .RegAw(AW),
-    .RegDw(DW),
-    .EnableDataIntgGen(0)
+      .RegAw(AW),
+      .RegDw(DW),
+      .EnableDataIntgGen(0)
   ) u_reg_if (
-    .clk_i  (clk_i),
-    .rst_ni (rst_ni),
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
 
-    .tl_i (tl_reg_h2d),
-    .tl_o (tl_reg_d2h),
+      .tl_i(tl_reg_h2d),
+      .tl_o(tl_reg_d2h),
 
-    .en_ifetch_i(prim_mubi_pkg::MuBi4False),
-    .intg_error_o(),
+      .en_ifetch_i (prim_mubi_pkg::MuBi4False),
+      .intg_error_o(),
 
-    .we_o    (reg_we),
-    .re_o    (reg_re),
-    .addr_o  (reg_addr),
-    .wdata_o (reg_wdata),
-    .be_o    (reg_be),
-    .busy_i  (reg_busy),
-    .rdata_i (reg_rdata),
-    .error_i (reg_error)
+      .we_o   (reg_we),
+      .re_o   (reg_re),
+      .addr_o (reg_addr),
+      .wdata_o(reg_wdata),
+      .be_o   (reg_be),
+      .busy_i (reg_rdata),
+      .rdata_i(reg_error),
+      .error_i(reg_busy)
   );
+`elsif BUGNUMAESREGOP3T
+  tlul_adapter_reg #(
+      .RegAw(AW),
+      .RegDw(DW),
+      .EnableDataIntgGen(0)
+  ) u_reg_if (
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
+
+      .tl_i(tl_reg_h2d),
+      .tl_o(tl_reg_d2h),
+
+      .en_ifetch_i (prim_mubi_pkg::MuBi4False),
+      .intg_error_o(),
+
+      .we_o   (reg_re),
+      .re_o   (reg_we),
+      .addr_o (reg_wdata),
+      .wdata_o(reg_addr),
+      .be_o   (reg_be),
+      .busy_i (reg_busy),
+      .rdata_i(reg_rdata),
+      .error_i(reg_error)
+  );
+`else
+  tlul_adapter_reg #(
+      .RegAw(AW),
+      .RegDw(DW),
+      .EnableDataIntgGen(0)
+  ) u_reg_if (
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
+
+      .tl_i(tl_reg_h2d),
+      .tl_o(tl_reg_d2h),
+
+      .en_ifetch_i (prim_mubi_pkg::MuBi4False),
+      .intg_error_o(),
+
+      .we_o   (reg_we),
+      .re_o   (reg_re),
+      .addr_o (reg_addr),
+      .wdata_o(reg_wdata),
+      .be_o   (reg_be),
+      .busy_i (reg_busy),
+      .rdata_i(reg_rdata),
+      .error_i(reg_error)
+  );
+`endif
 
   // cdc oversampling signals
-
-  assign reg_rdata = reg_rdata_next ;
+`ifdef BUGNUMAESREGOP7
+  // assign reg_rdata = reg_rdata_next;
+  assign reg_error = addrmiss;
+`else
+  assign reg_rdata = reg_rdata_next;
   assign reg_error = addrmiss | wr_err | intg_err;
+`endif
 
   // Define SW related signals
   // Format: <reg>_<field>_{wd|we|qs}
@@ -238,183 +359,371 @@ module aes_reg_top (
   logic [1:0] alert_test_flds_we;
   assign alert_test_qe = &alert_test_flds_we;
   //   F[recov_ctrl_update_err]: 0:0
+`ifdef BUGNUMAESREGOP8
   prim_subreg_ext #(
-    .DW    (1)
+      .DW(1)
   ) u_alert_test_recov_ctrl_update_err (
-    .re     (1'b0),
-    .we     (alert_test_we),
-    .wd     (alert_test_recov_ctrl_update_err_wd),
-    .d      ('0),
-    .qre    (),
-    .qe     (alert_test_flds_we[0]),
-    .q      (reg2hw.alert_test.recov_ctrl_update_err.q),
-    .ds     (),
-    .qs     ()
+      .re (1'b1),
+      .we (~alert_test_we),
+      .wd (),
+      .d  ('1),
+      .qre(),
+      .qe (alert_test_flds_we[0]),
+      .q  (),
+      .ds (),
+      .qs ()
+  );
+  // assign reg2hw.alert_test.recov_ctrl_update_err.qe = alert_test_qe;
+`else
+  prim_subreg_ext #(
+      .DW(1)
+  ) u_alert_test_recov_ctrl_update_err (
+      .re (1'b0),
+      .we (alert_test_we),
+      .wd (alert_test_recov_ctrl_update_err_wd),
+      .d  ('0),
+      .qre(),
+      .qe (alert_test_flds_we[0]),
+      .q  (reg2hw.alert_test.recov_ctrl_update_err.q),
+      .ds (),
+      .qs ()
   );
   assign reg2hw.alert_test.recov_ctrl_update_err.qe = alert_test_qe;
+`endif
 
   //   F[fatal_fault]: 1:1
+`ifdef BUGNUMAESREGOP9
   prim_subreg_ext #(
-    .DW    (1)
+      .DW(1)
   ) u_alert_test_fatal_fault (
-    .re     (1'b0),
-    .we     (alert_test_we),
-    .wd     (alert_test_fatal_fault_wd),
-    .d      ('0),
-    .qre    (),
-    .qe     (alert_test_flds_we[1]),
-    .q      (reg2hw.alert_test.fatal_fault.q),
-    .ds     (),
-    .qs     ()
+      .re (1'b1),
+      .we (alert_test_we),
+      .wd (alert_test_we),
+      .d  ('1),
+      .qre(),
+      .qe (),
+      .q  (reg2hw.alert_test.fatal_fault.q),
+      .ds (),
+      .qs ()
+  );
+  assign reg2hw.alert_test.fatal_fault.qe = ~alert_test_qe;
+`elsif BUGNUMAESREGOP4T
+  prim_subreg_ext #(
+      .DW(1)
+  ) u_alert_test_fatal_fault (
+      .re (1'b1),
+      .we (alert_test_we),
+      .wd (~alert_test_we),
+      .d  ('1),
+      .qre(),
+      .qe (alert_test_flds_we[1]),
+      .q  (),
+      .ds (),
+      .qs ()
+  );
+  // assign reg2hw.alert_test.fatal_fault.qe = alert_test_qe;
+`else
+  prim_subreg_ext #(
+      .DW(1)
+  ) u_alert_test_fatal_fault (
+      .re (1'b0),
+      .we (alert_test_we),
+      .wd (alert_test_fatal_fault_wd),
+      .d  ('0),
+      .qre(),
+      .qe (alert_test_flds_we[1]),
+      .q  (reg2hw.alert_test.fatal_fault.q),
+      .ds (),
+      .qs ()
   );
   assign reg2hw.alert_test.fatal_fault.qe = alert_test_qe;
+`endif
 
 
   // Subregister 0 of Multireg key_share0
   // R[key_share0_0]: V(True)
+`ifdef BUGNUMAESREGOP10
   logic key_share0_0_qe;
   logic [0:0] key_share0_0_flds_we;
   assign key_share0_0_qe = &key_share0_0_flds_we;
   prim_subreg_ext #(
-    .DW    (32)
+      .DW(32)
   ) u_key_share0_0 (
-    .re     (1'b0),
-    .we     (key_share0_0_we),
-    .wd     (key_share0_0_wd),
-    .d      (hw2reg.key_share0[0].d),
-    .qre    (),
-    .qe     (key_share0_0_flds_we[0]),
-    .q      (reg2hw.key_share0[0].q),
-    .ds     (),
-    .qs     ()
+      .re (1'b1),
+      .we (key_share0_0_we),
+      .wd (key_share0_0_we),
+      .d  (hw2reg.key_share0[0].d),
+      .qre(),
+      .qe (key_share0_0_flds_we[0]),
+      .q  (reg2hw.key_share0[0].q),
+      .ds (),
+      .qs ()
   );
   assign reg2hw.key_share0[0].qe = key_share0_0_qe;
+`else
+  logic key_share0_0_qe;
+  logic [0:0] key_share0_0_flds_we;
+  assign key_share0_0_qe = &key_share0_0_flds_we;
+  prim_subreg_ext #(
+      .DW(32)
+  ) u_key_share0_0 (
+      .re (1'b0),
+      .we (key_share0_0_we),
+      .wd (key_share0_0_wd),
+      .d  (hw2reg.key_share0[0].d),
+      .qre(),
+      .qe (key_share0_0_flds_we[0]),
+      .q  (reg2hw.key_share0[0].q),
+      .ds (),
+      .qs ()
+  );
+  assign reg2hw.key_share0[0].qe = key_share0_0_qe;
+`endif
 
 
   // Subregister 1 of Multireg key_share0
   // R[key_share0_1]: V(True)
+`ifdef BUGNUMAESREGOP11
   logic key_share0_1_qe;
   logic [0:0] key_share0_1_flds_we;
   assign key_share0_1_qe = &key_share0_1_flds_we;
   prim_subreg_ext #(
-    .DW    (32)
+      .DW(32)
   ) u_key_share0_1 (
-    .re     (1'b0),
-    .we     (key_share0_1_we),
-    .wd     (key_share0_1_wd),
-    .d      (hw2reg.key_share0[1].d),
-    .qre    (),
-    .qe     (key_share0_1_flds_we[0]),
-    .q      (reg2hw.key_share0[1].q),
-    .ds     (),
-    .qs     ()
+      .re (1'b1),
+      .we (key_share0_1_wd),
+      .wd (key_share0_1_wd),
+      .d  (hw2reg.key_share0[1].d),
+      .qre(),
+      .qe (key_share0_1_flds_we[0]),
+      .q  (reg2hw.key_share0[1].q),
+      .ds (),
+      .qs ()
   );
   assign reg2hw.key_share0[1].qe = key_share0_1_qe;
+`else
+  logic key_share0_1_qe;
+  logic [0:0] key_share0_1_flds_we;
+  assign key_share0_1_qe = &key_share0_1_flds_we;
+  prim_subreg_ext #(
+      .DW(32)
+  ) u_key_share0_1 (
+      .re (1'b0),
+      .we (key_share0_1_we),
+      .wd (key_share0_1_wd),
+      .d  (hw2reg.key_share0[1].d),
+      .qre(),
+      .qe (key_share0_1_flds_we[0]),
+      .q  (reg2hw.key_share0[1].q),
+      .ds (),
+      .qs ()
+  );
+  assign reg2hw.key_share0[1].qe = key_share0_1_qe;
+`endif
 
 
   // Subregister 2 of Multireg key_share0
   // R[key_share0_2]: V(True)
+`ifdef BUGNUMAESREGOP5T
+  logic key_share0_2_qe;
+  logic [0:0] key_share0_2_flds_we;
+  assign key_share0_2_qe = |key_share0_2_flds_we;
+  prim_subreg_ext #(
+      .DW(32)
+  ) u_key_share0_2 (
+      .re (1'b0),
+      .we (key_share0_2_we),
+      .wd (key_share0_2_we),
+      .d  (hw2reg.key_share0[2].d),
+      .qre(),
+      .qe (),
+      .q  (reg2hw.key_share0[2].q),
+      .ds (),
+      .qs ()
+  );
+  assign reg2hw.key_share0[2].qe = key_share0_2_qe;
+`else
   logic key_share0_2_qe;
   logic [0:0] key_share0_2_flds_we;
   assign key_share0_2_qe = &key_share0_2_flds_we;
   prim_subreg_ext #(
-    .DW    (32)
+      .DW(32)
   ) u_key_share0_2 (
-    .re     (1'b0),
-    .we     (key_share0_2_we),
-    .wd     (key_share0_2_wd),
-    .d      (hw2reg.key_share0[2].d),
-    .qre    (),
-    .qe     (key_share0_2_flds_we[0]),
-    .q      (reg2hw.key_share0[2].q),
-    .ds     (),
-    .qs     ()
+      .re (1'b0),
+      .we (key_share0_2_we),
+      .wd (key_share0_2_wd),
+      .d  (hw2reg.key_share0[2].d),
+      .qre(),
+      .qe (key_share0_2_flds_we[0]),
+      .q  (reg2hw.key_share0[2].q),
+      .ds (),
+      .qs ()
   );
   assign reg2hw.key_share0[2].qe = key_share0_2_qe;
+`endif
 
 
   // Subregister 3 of Multireg key_share0
   // R[key_share0_3]: V(True)
+`ifdef BUGNUMAESREGOP12
+  logic key_share0_3_qe;
+  logic [0:0] key_share0_3_flds_we;
+  assign key_share0_3_qe = |key_share0_3_flds_we;
+  prim_subreg_ext #(
+      .DW(32)
+  ) u_key_share0_3 (
+      .re (1'b0),
+      .we (key_share0_3_we),
+      .wd (~key_share0_3_wd),
+      .d  (hw2reg.key_share0[3].d),
+      .qre(),
+      .qe (key_share0_3_flds_we[0]),
+      .q  (),
+      .ds (),
+      .qs ()
+  );
+  assign reg2hw.key_share0[3].qe = key_share0_3_qe;
+`else
   logic key_share0_3_qe;
   logic [0:0] key_share0_3_flds_we;
   assign key_share0_3_qe = &key_share0_3_flds_we;
   prim_subreg_ext #(
-    .DW    (32)
+      .DW(32)
   ) u_key_share0_3 (
-    .re     (1'b0),
-    .we     (key_share0_3_we),
-    .wd     (key_share0_3_wd),
-    .d      (hw2reg.key_share0[3].d),
-    .qre    (),
-    .qe     (key_share0_3_flds_we[0]),
-    .q      (reg2hw.key_share0[3].q),
-    .ds     (),
-    .qs     ()
+      .re (1'b0),
+      .we (key_share0_3_we),
+      .wd (key_share0_3_wd),
+      .d  (hw2reg.key_share0[3].d),
+      .qre(),
+      .qe (key_share0_3_flds_we[0]),
+      .q  (reg2hw.key_share0[3].q),
+      .ds (),
+      .qs ()
   );
   assign reg2hw.key_share0[3].qe = key_share0_3_qe;
-
+`endif
 
   // Subregister 4 of Multireg key_share0
   // R[key_share0_4]: V(True)
+`ifdef BUGNUMAESREGOP13
   logic key_share0_4_qe;
   logic [0:0] key_share0_4_flds_we;
   assign key_share0_4_qe = &key_share0_4_flds_we;
   prim_subreg_ext #(
-    .DW    (32)
+      .DW(32)
   ) u_key_share0_4 (
-    .re     (1'b0),
-    .we     (key_share0_4_we),
-    .wd     (key_share0_4_wd),
-    .d      (hw2reg.key_share0[4].d),
-    .qre    (),
-    .qe     (key_share0_4_flds_we[0]),
-    .q      (reg2hw.key_share0[4].q),
-    .ds     (),
-    .qs     ()
+      .re (1'b1),
+      .we (~key_share0_4_we),
+      .wd (~key_share0_4_wd),
+      .d  (hw2reg.key_share0[4].d),
+      .qre(),
+      .qe (key_share0_4_flds_we[0]),
+      .q  (reg2hw.key_share0[4].q),
+      .ds (),
+      .qs ()
   );
   assign reg2hw.key_share0[4].qe = key_share0_4_qe;
+`else
+  logic key_share0_4_qe;
+  logic [0:0] key_share0_4_flds_we;
+  assign key_share0_4_qe = &key_share0_4_flds_we;
+  prim_subreg_ext #(
+      .DW(32)
+  ) u_key_share0_4 (
+      .re (1'b0),
+      .we (key_share0_4_we),
+      .wd (key_share0_4_wd),
+      .d  (hw2reg.key_share0[4].d),
+      .qre(),
+      .qe (key_share0_4_flds_we[0]),
+      .q  (reg2hw.key_share0[4].q),
+      .ds (),
+      .qs ()
+  );
+  assign reg2hw.key_share0[4].qe = key_share0_4_qe;
+`endif
 
 
   // Subregister 5 of Multireg key_share0
   // R[key_share0_5]: V(True)
+`ifdef BUGNUMAESREGOP14
   logic key_share0_5_qe;
   logic [0:0] key_share0_5_flds_we;
   assign key_share0_5_qe = &key_share0_5_flds_we;
   prim_subreg_ext #(
-    .DW    (32)
+      .DW(32)
   ) u_key_share0_5 (
-    .re     (1'b0),
-    .we     (key_share0_5_we),
-    .wd     (key_share0_5_wd),
-    .d      (hw2reg.key_share0[5].d),
-    .qre    (),
-    .qe     (key_share0_5_flds_we[0]),
-    .q      (reg2hw.key_share0[5].q),
-    .ds     (),
-    .qs     ()
+      .re (1'b1),
+      .we (~key_share0_5_we),
+      .wd (~key_share0_5_wd),
+      .d  (),
+      .qre(),
+      .qe (key_share0_5_flds_we[0]),
+      .q  (reg2hw.key_share0[5].q),
+      .ds (),
+      .qs ()
   );
   assign reg2hw.key_share0[5].qe = key_share0_5_qe;
+`else
+  logic key_share0_5_qe;
+  logic [0:0] key_share0_5_flds_we;
+  assign key_share0_5_qe = &key_share0_5_flds_we;
+  prim_subreg_ext #(
+      .DW(32)
+  ) u_key_share0_5 (
+      .re (1'b0),
+      .we (key_share0_5_we),
+      .wd (key_share0_5_wd),
+      .d  (hw2reg.key_share0[5].d),
+      .qre(),
+      .qe (key_share0_5_flds_we[0]),
+      .q  (reg2hw.key_share0[5].q),
+      .ds (),
+      .qs ()
+  );
+  assign reg2hw.key_share0[5].qe = key_share0_5_qe;
+`endif
 
 
   // Subregister 6 of Multireg key_share0
   // R[key_share0_6]: V(True)
+`ifdef BUGNUMAESREGOP6T
   logic key_share0_6_qe;
   logic [0:0] key_share0_6_flds_we;
   assign key_share0_6_qe = &key_share0_6_flds_we;
   prim_subreg_ext #(
-    .DW    (32)
+      .DW(32)
   ) u_key_share0_6 (
-    .re     (1'b0),
-    .we     (key_share0_6_we),
-    .wd     (key_share0_6_wd),
-    .d      (hw2reg.key_share0[6].d),
-    .qre    (),
-    .qe     (key_share0_6_flds_we[0]),
-    .q      (reg2hw.key_share0[6].q),
-    .ds     (),
-    .qs     ()
+      .re (1'b0),
+      .we (~key_share0_6_we),
+      .wd (),
+      .d  (),
+      .qre(),
+      .qe (key_share0_6_flds_we[0]),
+      .q  (reg2hw.key_share0[6].q),
+      .ds (),
+      .qs ()
   );
   assign reg2hw.key_share0[6].qe = key_share0_6_qe;
+`else
+  logic key_share0_6_qe;
+  logic [0:0] key_share0_6_flds_we;
+  assign key_share0_6_qe = &key_share0_6_flds_we;
+  prim_subreg_ext #(
+      .DW(32)
+  ) u_key_share0_6 (
+      .re (1'b0),
+      .we (key_share0_6_we),
+      .wd (key_share0_6_wd),
+      .d  (hw2reg.key_share0[6].d),
+      .qre(),
+      .qe (key_share0_6_flds_we[0]),
+      .q  (reg2hw.key_share0[6].q),
+      .ds (),
+      .qs ()
+  );
+  assign reg2hw.key_share0[6].qe = key_share0_6_qe;
+`endif
 
 
   // Subregister 7 of Multireg key_share0
@@ -423,17 +732,17 @@ module aes_reg_top (
   logic [0:0] key_share0_7_flds_we;
   assign key_share0_7_qe = &key_share0_7_flds_we;
   prim_subreg_ext #(
-    .DW    (32)
+      .DW(32)
   ) u_key_share0_7 (
-    .re     (1'b0),
-    .we     (key_share0_7_we),
-    .wd     (key_share0_7_wd),
-    .d      (hw2reg.key_share0[7].d),
-    .qre    (),
-    .qe     (key_share0_7_flds_we[0]),
-    .q      (reg2hw.key_share0[7].q),
-    .ds     (),
-    .qs     ()
+      .re (1'b0),
+      .we (key_share0_7_we),
+      .wd (key_share0_7_wd),
+      .d  (hw2reg.key_share0[7].d),
+      .qre(),
+      .qe (key_share0_7_flds_we[0]),
+      .q  (reg2hw.key_share0[7].q),
+      .ds (),
+      .qs ()
   );
   assign reg2hw.key_share0[7].qe = key_share0_7_qe;
 
@@ -444,17 +753,17 @@ module aes_reg_top (
   logic [0:0] key_share1_0_flds_we;
   assign key_share1_0_qe = &key_share1_0_flds_we;
   prim_subreg_ext #(
-    .DW    (32)
+      .DW(32)
   ) u_key_share1_0 (
-    .re     (1'b0),
-    .we     (key_share1_0_we),
-    .wd     (key_share1_0_wd),
-    .d      (hw2reg.key_share1[0].d),
-    .qre    (),
-    .qe     (key_share1_0_flds_we[0]),
-    .q      (reg2hw.key_share1[0].q),
-    .ds     (),
-    .qs     ()
+      .re (1'b0),
+      .we (key_share1_0_we),
+      .wd (key_share1_0_wd),
+      .d  (hw2reg.key_share1[0].d),
+      .qre(),
+      .qe (key_share1_0_flds_we[0]),
+      .q  (reg2hw.key_share1[0].q),
+      .ds (),
+      .qs ()
   );
   assign reg2hw.key_share1[0].qe = key_share1_0_qe;
 
@@ -465,17 +774,17 @@ module aes_reg_top (
   logic [0:0] key_share1_1_flds_we;
   assign key_share1_1_qe = &key_share1_1_flds_we;
   prim_subreg_ext #(
-    .DW    (32)
+      .DW(32)
   ) u_key_share1_1 (
-    .re     (1'b0),
-    .we     (key_share1_1_we),
-    .wd     (key_share1_1_wd),
-    .d      (hw2reg.key_share1[1].d),
-    .qre    (),
-    .qe     (key_share1_1_flds_we[0]),
-    .q      (reg2hw.key_share1[1].q),
-    .ds     (),
-    .qs     ()
+      .re (1'b0),
+      .we (key_share1_1_we),
+      .wd (key_share1_1_wd),
+      .d  (hw2reg.key_share1[1].d),
+      .qre(),
+      .qe (key_share1_1_flds_we[0]),
+      .q  (reg2hw.key_share1[1].q),
+      .ds (),
+      .qs ()
   );
   assign reg2hw.key_share1[1].qe = key_share1_1_qe;
 
@@ -486,17 +795,17 @@ module aes_reg_top (
   logic [0:0] key_share1_2_flds_we;
   assign key_share1_2_qe = &key_share1_2_flds_we;
   prim_subreg_ext #(
-    .DW    (32)
+      .DW(32)
   ) u_key_share1_2 (
-    .re     (1'b0),
-    .we     (key_share1_2_we),
-    .wd     (key_share1_2_wd),
-    .d      (hw2reg.key_share1[2].d),
-    .qre    (),
-    .qe     (key_share1_2_flds_we[0]),
-    .q      (reg2hw.key_share1[2].q),
-    .ds     (),
-    .qs     ()
+      .re (1'b0),
+      .we (key_share1_2_we),
+      .wd (key_share1_2_wd),
+      .d  (hw2reg.key_share1[2].d),
+      .qre(),
+      .qe (key_share1_2_flds_we[0]),
+      .q  (reg2hw.key_share1[2].q),
+      .ds (),
+      .qs ()
   );
   assign reg2hw.key_share1[2].qe = key_share1_2_qe;
 
@@ -507,17 +816,17 @@ module aes_reg_top (
   logic [0:0] key_share1_3_flds_we;
   assign key_share1_3_qe = &key_share1_3_flds_we;
   prim_subreg_ext #(
-    .DW    (32)
+      .DW(32)
   ) u_key_share1_3 (
-    .re     (1'b0),
-    .we     (key_share1_3_we),
-    .wd     (key_share1_3_wd),
-    .d      (hw2reg.key_share1[3].d),
-    .qre    (),
-    .qe     (key_share1_3_flds_we[0]),
-    .q      (reg2hw.key_share1[3].q),
-    .ds     (),
-    .qs     ()
+      .re (1'b0),
+      .we (key_share1_3_we),
+      .wd (key_share1_3_wd),
+      .d  (hw2reg.key_share1[3].d),
+      .qre(),
+      .qe (key_share1_3_flds_we[0]),
+      .q  (reg2hw.key_share1[3].q),
+      .ds (),
+      .qs ()
   );
   assign reg2hw.key_share1[3].qe = key_share1_3_qe;
 
@@ -528,17 +837,17 @@ module aes_reg_top (
   logic [0:0] key_share1_4_flds_we;
   assign key_share1_4_qe = &key_share1_4_flds_we;
   prim_subreg_ext #(
-    .DW    (32)
+      .DW(32)
   ) u_key_share1_4 (
-    .re     (1'b0),
-    .we     (key_share1_4_we),
-    .wd     (key_share1_4_wd),
-    .d      (hw2reg.key_share1[4].d),
-    .qre    (),
-    .qe     (key_share1_4_flds_we[0]),
-    .q      (reg2hw.key_share1[4].q),
-    .ds     (),
-    .qs     ()
+      .re (1'b0),
+      .we (key_share1_4_we),
+      .wd (key_share1_4_wd),
+      .d  (hw2reg.key_share1[4].d),
+      .qre(),
+      .qe (key_share1_4_flds_we[0]),
+      .q  (reg2hw.key_share1[4].q),
+      .ds (),
+      .qs ()
   );
   assign reg2hw.key_share1[4].qe = key_share1_4_qe;
 
@@ -549,17 +858,17 @@ module aes_reg_top (
   logic [0:0] key_share1_5_flds_we;
   assign key_share1_5_qe = &key_share1_5_flds_we;
   prim_subreg_ext #(
-    .DW    (32)
+      .DW(32)
   ) u_key_share1_5 (
-    .re     (1'b0),
-    .we     (key_share1_5_we),
-    .wd     (key_share1_5_wd),
-    .d      (hw2reg.key_share1[5].d),
-    .qre    (),
-    .qe     (key_share1_5_flds_we[0]),
-    .q      (reg2hw.key_share1[5].q),
-    .ds     (),
-    .qs     ()
+      .re (1'b0),
+      .we (key_share1_5_we),
+      .wd (key_share1_5_wd),
+      .d  (hw2reg.key_share1[5].d),
+      .qre(),
+      .qe (key_share1_5_flds_we[0]),
+      .q  (reg2hw.key_share1[5].q),
+      .ds (),
+      .qs ()
   );
   assign reg2hw.key_share1[5].qe = key_share1_5_qe;
 
@@ -570,17 +879,17 @@ module aes_reg_top (
   logic [0:0] key_share1_6_flds_we;
   assign key_share1_6_qe = &key_share1_6_flds_we;
   prim_subreg_ext #(
-    .DW    (32)
+      .DW(32)
   ) u_key_share1_6 (
-    .re     (1'b0),
-    .we     (key_share1_6_we),
-    .wd     (key_share1_6_wd),
-    .d      (hw2reg.key_share1[6].d),
-    .qre    (),
-    .qe     (key_share1_6_flds_we[0]),
-    .q      (reg2hw.key_share1[6].q),
-    .ds     (),
-    .qs     ()
+      .re (1'b0),
+      .we (key_share1_6_we),
+      .wd (key_share1_6_wd),
+      .d  (hw2reg.key_share1[6].d),
+      .qre(),
+      .qe (key_share1_6_flds_we[0]),
+      .q  (reg2hw.key_share1[6].q),
+      .ds (),
+      .qs ()
   );
   assign reg2hw.key_share1[6].qe = key_share1_6_qe;
 
@@ -591,17 +900,17 @@ module aes_reg_top (
   logic [0:0] key_share1_7_flds_we;
   assign key_share1_7_qe = &key_share1_7_flds_we;
   prim_subreg_ext #(
-    .DW    (32)
+      .DW(32)
   ) u_key_share1_7 (
-    .re     (1'b0),
-    .we     (key_share1_7_we),
-    .wd     (key_share1_7_wd),
-    .d      (hw2reg.key_share1[7].d),
-    .qre    (),
-    .qe     (key_share1_7_flds_we[0]),
-    .q      (reg2hw.key_share1[7].q),
-    .ds     (),
-    .qs     ()
+      .re (1'b0),
+      .we (key_share1_7_we),
+      .wd (key_share1_7_wd),
+      .d  (hw2reg.key_share1[7].d),
+      .qre(),
+      .qe (key_share1_7_flds_we[0]),
+      .q  (reg2hw.key_share1[7].q),
+      .ds (),
+      .qs ()
   );
   assign reg2hw.key_share1[7].qe = key_share1_7_qe;
 
@@ -612,17 +921,17 @@ module aes_reg_top (
   logic [0:0] iv_0_flds_we;
   assign iv_0_qe = &iv_0_flds_we;
   prim_subreg_ext #(
-    .DW    (32)
+      .DW(32)
   ) u_iv_0 (
-    .re     (iv_0_re),
-    .we     (iv_0_we),
-    .wd     (iv_0_wd),
-    .d      (hw2reg.iv[0].d),
-    .qre    (),
-    .qe     (iv_0_flds_we[0]),
-    .q      (reg2hw.iv[0].q),
-    .ds     (),
-    .qs     (iv_0_qs)
+      .re (iv_0_re),
+      .we (iv_0_we),
+      .wd (iv_0_wd),
+      .d  (hw2reg.iv[0].d),
+      .qre(),
+      .qe (iv_0_flds_we[0]),
+      .q  (reg2hw.iv[0].q),
+      .ds (),
+      .qs (iv_0_qs)
   );
   assign reg2hw.iv[0].qe = iv_0_qe;
 
@@ -633,17 +942,17 @@ module aes_reg_top (
   logic [0:0] iv_1_flds_we;
   assign iv_1_qe = &iv_1_flds_we;
   prim_subreg_ext #(
-    .DW    (32)
+      .DW(32)
   ) u_iv_1 (
-    .re     (iv_1_re),
-    .we     (iv_1_we),
-    .wd     (iv_1_wd),
-    .d      (hw2reg.iv[1].d),
-    .qre    (),
-    .qe     (iv_1_flds_we[0]),
-    .q      (reg2hw.iv[1].q),
-    .ds     (),
-    .qs     (iv_1_qs)
+      .re (iv_1_re),
+      .we (iv_1_we),
+      .wd (iv_1_wd),
+      .d  (hw2reg.iv[1].d),
+      .qre(),
+      .qe (iv_1_flds_we[0]),
+      .q  (reg2hw.iv[1].q),
+      .ds (),
+      .qs (iv_1_qs)
   );
   assign reg2hw.iv[1].qe = iv_1_qe;
 
@@ -654,17 +963,17 @@ module aes_reg_top (
   logic [0:0] iv_2_flds_we;
   assign iv_2_qe = &iv_2_flds_we;
   prim_subreg_ext #(
-    .DW    (32)
+      .DW(32)
   ) u_iv_2 (
-    .re     (iv_2_re),
-    .we     (iv_2_we),
-    .wd     (iv_2_wd),
-    .d      (hw2reg.iv[2].d),
-    .qre    (),
-    .qe     (iv_2_flds_we[0]),
-    .q      (reg2hw.iv[2].q),
-    .ds     (),
-    .qs     (iv_2_qs)
+      .re (iv_2_re),
+      .we (iv_2_we),
+      .wd (iv_2_wd),
+      .d  (hw2reg.iv[2].d),
+      .qre(),
+      .qe (iv_2_flds_we[0]),
+      .q  (reg2hw.iv[2].q),
+      .ds (),
+      .qs (iv_2_qs)
   );
   assign reg2hw.iv[2].qe = iv_2_qe;
 
@@ -675,17 +984,17 @@ module aes_reg_top (
   logic [0:0] iv_3_flds_we;
   assign iv_3_qe = &iv_3_flds_we;
   prim_subreg_ext #(
-    .DW    (32)
+      .DW(32)
   ) u_iv_3 (
-    .re     (iv_3_re),
-    .we     (iv_3_we),
-    .wd     (iv_3_wd),
-    .d      (hw2reg.iv[3].d),
-    .qre    (),
-    .qe     (iv_3_flds_we[0]),
-    .q      (reg2hw.iv[3].q),
-    .ds     (),
-    .qs     (iv_3_qs)
+      .re (iv_3_re),
+      .we (iv_3_we),
+      .wd (iv_3_wd),
+      .d  (hw2reg.iv[3].d),
+      .qre(),
+      .qe (iv_3_flds_we[0]),
+      .q  (reg2hw.iv[3].q),
+      .ds (),
+      .qs (iv_3_qs)
   );
   assign reg2hw.iv[3].qe = iv_3_qe;
 
@@ -695,38 +1004,38 @@ module aes_reg_top (
   logic data_in_0_qe;
   logic [0:0] data_in_0_flds_we;
   prim_flop #(
-    .Width(1),
-    .ResetValue(0)
+      .Width(1),
+      .ResetValue(0)
   ) u_data_in0_qe (
-    .clk_i(clk_i),
-    .rst_ni(rst_ni),
-    .d_i(&data_in_0_flds_we),
-    .q_o(data_in_0_qe)
+      .clk_i(clk_i),
+      .rst_ni(rst_ni),
+      .d_i(&data_in_0_flds_we),
+      .q_o(data_in_0_qe)
   );
   prim_subreg #(
-    .DW      (32),
-    .SwAccess(prim_subreg_pkg::SwAccessWO),
-    .RESVAL  (32'h0),
-    .Mubi    (1'b0)
+      .DW      (32),
+      .SwAccess(prim_subreg_pkg::SwAccessWO),
+      .RESVAL  (32'h0),
+      .Mubi    (1'b0)
   ) u_data_in_0 (
-    .clk_i   (clk_i),
-    .rst_ni  (rst_ni),
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
 
-    // from register interface
-    .we     (data_in_0_we),
-    .wd     (data_in_0_wd),
+      // from register interface
+      .we(data_in_0_we),
+      .wd(data_in_0_wd),
 
-    // from internal hardware
-    .de     (hw2reg.data_in[0].de),
-    .d      (hw2reg.data_in[0].d),
+      // from internal hardware
+      .de(hw2reg.data_in[0].de),
+      .d (hw2reg.data_in[0].d),
 
-    // to internal hardware
-    .qe     (data_in_0_flds_we[0]),
-    .q      (reg2hw.data_in[0].q),
-    .ds     (),
+      // to internal hardware
+      .qe(data_in_0_flds_we[0]),
+      .q (reg2hw.data_in[0].q),
+      .ds(),
 
-    // to register interface (read)
-    .qs     ()
+      // to register interface (read)
+      .qs()
   );
   assign reg2hw.data_in[0].qe = data_in_0_qe;
 
@@ -736,38 +1045,38 @@ module aes_reg_top (
   logic data_in_1_qe;
   logic [0:0] data_in_1_flds_we;
   prim_flop #(
-    .Width(1),
-    .ResetValue(0)
+      .Width(1),
+      .ResetValue(0)
   ) u_data_in1_qe (
-    .clk_i(clk_i),
-    .rst_ni(rst_ni),
-    .d_i(&data_in_1_flds_we),
-    .q_o(data_in_1_qe)
+      .clk_i(clk_i),
+      .rst_ni(rst_ni),
+      .d_i(&data_in_1_flds_we),
+      .q_o(data_in_1_qe)
   );
   prim_subreg #(
-    .DW      (32),
-    .SwAccess(prim_subreg_pkg::SwAccessWO),
-    .RESVAL  (32'h0),
-    .Mubi    (1'b0)
+      .DW      (32),
+      .SwAccess(prim_subreg_pkg::SwAccessWO),
+      .RESVAL  (32'h0),
+      .Mubi    (1'b0)
   ) u_data_in_1 (
-    .clk_i   (clk_i),
-    .rst_ni  (rst_ni),
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
 
-    // from register interface
-    .we     (data_in_1_we),
-    .wd     (data_in_1_wd),
+      // from register interface
+      .we(data_in_1_we),
+      .wd(data_in_1_wd),
 
-    // from internal hardware
-    .de     (hw2reg.data_in[1].de),
-    .d      (hw2reg.data_in[1].d),
+      // from internal hardware
+      .de(hw2reg.data_in[1].de),
+      .d (hw2reg.data_in[1].d),
 
-    // to internal hardware
-    .qe     (data_in_1_flds_we[0]),
-    .q      (reg2hw.data_in[1].q),
-    .ds     (),
+      // to internal hardware
+      .qe(data_in_1_flds_we[0]),
+      .q (reg2hw.data_in[1].q),
+      .ds(),
 
-    // to register interface (read)
-    .qs     ()
+      // to register interface (read)
+      .qs()
   );
   assign reg2hw.data_in[1].qe = data_in_1_qe;
 
@@ -777,38 +1086,38 @@ module aes_reg_top (
   logic data_in_2_qe;
   logic [0:0] data_in_2_flds_we;
   prim_flop #(
-    .Width(1),
-    .ResetValue(0)
+      .Width(1),
+      .ResetValue(0)
   ) u_data_in2_qe (
-    .clk_i(clk_i),
-    .rst_ni(rst_ni),
-    .d_i(&data_in_2_flds_we),
-    .q_o(data_in_2_qe)
+      .clk_i(clk_i),
+      .rst_ni(rst_ni),
+      .d_i(&data_in_2_flds_we),
+      .q_o(data_in_2_qe)
   );
   prim_subreg #(
-    .DW      (32),
-    .SwAccess(prim_subreg_pkg::SwAccessWO),
-    .RESVAL  (32'h0),
-    .Mubi    (1'b0)
+      .DW      (32),
+      .SwAccess(prim_subreg_pkg::SwAccessWO),
+      .RESVAL  (32'h0),
+      .Mubi    (1'b0)
   ) u_data_in_2 (
-    .clk_i   (clk_i),
-    .rst_ni  (rst_ni),
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
 
-    // from register interface
-    .we     (data_in_2_we),
-    .wd     (data_in_2_wd),
+      // from register interface
+      .we(data_in_2_we),
+      .wd(data_in_2_wd),
 
-    // from internal hardware
-    .de     (hw2reg.data_in[2].de),
-    .d      (hw2reg.data_in[2].d),
+      // from internal hardware
+      .de(hw2reg.data_in[2].de),
+      .d (hw2reg.data_in[2].d),
 
-    // to internal hardware
-    .qe     (data_in_2_flds_we[0]),
-    .q      (reg2hw.data_in[2].q),
-    .ds     (),
+      // to internal hardware
+      .qe(data_in_2_flds_we[0]),
+      .q (reg2hw.data_in[2].q),
+      .ds(),
 
-    // to register interface (read)
-    .qs     ()
+      // to register interface (read)
+      .qs()
   );
   assign reg2hw.data_in[2].qe = data_in_2_qe;
 
@@ -818,38 +1127,38 @@ module aes_reg_top (
   logic data_in_3_qe;
   logic [0:0] data_in_3_flds_we;
   prim_flop #(
-    .Width(1),
-    .ResetValue(0)
+      .Width(1),
+      .ResetValue(0)
   ) u_data_in3_qe (
-    .clk_i(clk_i),
-    .rst_ni(rst_ni),
-    .d_i(&data_in_3_flds_we),
-    .q_o(data_in_3_qe)
+      .clk_i(clk_i),
+      .rst_ni(rst_ni),
+      .d_i(&data_in_3_flds_we),
+      .q_o(data_in_3_qe)
   );
   prim_subreg #(
-    .DW      (32),
-    .SwAccess(prim_subreg_pkg::SwAccessWO),
-    .RESVAL  (32'h0),
-    .Mubi    (1'b0)
+      .DW      (32),
+      .SwAccess(prim_subreg_pkg::SwAccessWO),
+      .RESVAL  (32'h0),
+      .Mubi    (1'b0)
   ) u_data_in_3 (
-    .clk_i   (clk_i),
-    .rst_ni  (rst_ni),
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
 
-    // from register interface
-    .we     (data_in_3_we),
-    .wd     (data_in_3_wd),
+      // from register interface
+      .we(data_in_3_we),
+      .wd(data_in_3_wd),
 
-    // from internal hardware
-    .de     (hw2reg.data_in[3].de),
-    .d      (hw2reg.data_in[3].d),
+      // from internal hardware
+      .de(hw2reg.data_in[3].de),
+      .d (hw2reg.data_in[3].d),
 
-    // to internal hardware
-    .qe     (data_in_3_flds_we[0]),
-    .q      (reg2hw.data_in[3].q),
-    .ds     (),
+      // to internal hardware
+      .qe(data_in_3_flds_we[0]),
+      .q (reg2hw.data_in[3].q),
+      .ds(),
 
-    // to register interface (read)
-    .qs     ()
+      // to register interface (read)
+      .qs()
   );
   assign reg2hw.data_in[3].qe = data_in_3_qe;
 
@@ -857,68 +1166,68 @@ module aes_reg_top (
   // Subregister 0 of Multireg data_out
   // R[data_out_0]: V(True)
   prim_subreg_ext #(
-    .DW    (32)
+      .DW(32)
   ) u_data_out_0 (
-    .re     (data_out_0_re),
-    .we     (1'b0),
-    .wd     ('0),
-    .d      (hw2reg.data_out[0].d),
-    .qre    (reg2hw.data_out[0].re),
-    .qe     (),
-    .q      (reg2hw.data_out[0].q),
-    .ds     (),
-    .qs     (data_out_0_qs)
+      .re (data_out_0_re),
+      .we (1'b0),
+      .wd ('0),
+      .d  (hw2reg.data_out[0].d),
+      .qre(reg2hw.data_out[0].re),
+      .qe (),
+      .q  (reg2hw.data_out[0].q),
+      .ds (),
+      .qs (data_out_0_qs)
   );
 
 
   // Subregister 1 of Multireg data_out
   // R[data_out_1]: V(True)
   prim_subreg_ext #(
-    .DW    (32)
+      .DW(32)
   ) u_data_out_1 (
-    .re     (data_out_1_re),
-    .we     (1'b0),
-    .wd     ('0),
-    .d      (hw2reg.data_out[1].d),
-    .qre    (reg2hw.data_out[1].re),
-    .qe     (),
-    .q      (reg2hw.data_out[1].q),
-    .ds     (),
-    .qs     (data_out_1_qs)
+      .re (data_out_1_re),
+      .we (1'b0),
+      .wd ('0),
+      .d  (hw2reg.data_out[1].d),
+      .qre(reg2hw.data_out[1].re),
+      .qe (),
+      .q  (reg2hw.data_out[1].q),
+      .ds (),
+      .qs (data_out_1_qs)
   );
 
 
   // Subregister 2 of Multireg data_out
   // R[data_out_2]: V(True)
   prim_subreg_ext #(
-    .DW    (32)
+      .DW(32)
   ) u_data_out_2 (
-    .re     (data_out_2_re),
-    .we     (1'b0),
-    .wd     ('0),
-    .d      (hw2reg.data_out[2].d),
-    .qre    (reg2hw.data_out[2].re),
-    .qe     (),
-    .q      (reg2hw.data_out[2].q),
-    .ds     (),
-    .qs     (data_out_2_qs)
+      .re (data_out_2_re),
+      .we (1'b0),
+      .wd ('0),
+      .d  (hw2reg.data_out[2].d),
+      .qre(reg2hw.data_out[2].re),
+      .qe (),
+      .q  (reg2hw.data_out[2].q),
+      .ds (),
+      .qs (data_out_2_qs)
   );
 
 
   // Subregister 3 of Multireg data_out
   // R[data_out_3]: V(True)
   prim_subreg_ext #(
-    .DW    (32)
+      .DW(32)
   ) u_data_out_3 (
-    .re     (data_out_3_re),
-    .we     (1'b0),
-    .wd     ('0),
-    .d      (hw2reg.data_out[3].d),
-    .qre    (reg2hw.data_out[3].re),
-    .qe     (),
-    .q      (reg2hw.data_out[3].q),
-    .ds     (),
-    .qs     (data_out_3_qs)
+      .re (data_out_3_re),
+      .we (1'b0),
+      .wd ('0),
+      .d  (hw2reg.data_out[3].d),
+      .qre(reg2hw.data_out[3].re),
+      .qe (),
+      .q  (reg2hw.data_out[3].q),
+      .ds (),
+      .qs (data_out_3_qs)
   );
 
 
@@ -928,97 +1237,97 @@ module aes_reg_top (
   assign ctrl_shadowed_qe = &ctrl_shadowed_flds_we;
   //   F[operation]: 1:0
   prim_subreg_ext #(
-    .DW    (2)
+      .DW(2)
   ) u_ctrl_shadowed_operation (
-    .re     (ctrl_shadowed_re),
-    .we     (ctrl_shadowed_we),
-    .wd     (ctrl_shadowed_operation_wd),
-    .d      (hw2reg.ctrl_shadowed.operation.d),
-    .qre    (reg2hw.ctrl_shadowed.operation.re),
-    .qe     (ctrl_shadowed_flds_we[0]),
-    .q      (reg2hw.ctrl_shadowed.operation.q),
-    .ds     (),
-    .qs     (ctrl_shadowed_operation_qs)
+      .re (ctrl_shadowed_re),
+      .we (ctrl_shadowed_we),
+      .wd (ctrl_shadowed_operation_wd),
+      .d  (hw2reg.ctrl_shadowed.operation.d),
+      .qre(reg2hw.ctrl_shadowed.operation.re),
+      .qe (ctrl_shadowed_flds_we[0]),
+      .q  (reg2hw.ctrl_shadowed.operation.q),
+      .ds (),
+      .qs (ctrl_shadowed_operation_qs)
   );
   assign reg2hw.ctrl_shadowed.operation.qe = ctrl_shadowed_qe;
 
   //   F[mode]: 7:2
   prim_subreg_ext #(
-    .DW    (6)
+      .DW(6)
   ) u_ctrl_shadowed_mode (
-    .re     (ctrl_shadowed_re),
-    .we     (ctrl_shadowed_we),
-    .wd     (ctrl_shadowed_mode_wd),
-    .d      (hw2reg.ctrl_shadowed.mode.d),
-    .qre    (reg2hw.ctrl_shadowed.mode.re),
-    .qe     (ctrl_shadowed_flds_we[1]),
-    .q      (reg2hw.ctrl_shadowed.mode.q),
-    .ds     (),
-    .qs     (ctrl_shadowed_mode_qs)
+      .re (ctrl_shadowed_re),
+      .we (ctrl_shadowed_we),
+      .wd (ctrl_shadowed_mode_wd),
+      .d  (hw2reg.ctrl_shadowed.mode.d),
+      .qre(reg2hw.ctrl_shadowed.mode.re),
+      .qe (ctrl_shadowed_flds_we[1]),
+      .q  (reg2hw.ctrl_shadowed.mode.q),
+      .ds (),
+      .qs (ctrl_shadowed_mode_qs)
   );
   assign reg2hw.ctrl_shadowed.mode.qe = ctrl_shadowed_qe;
 
   //   F[key_len]: 10:8
   prim_subreg_ext #(
-    .DW    (3)
+      .DW(3)
   ) u_ctrl_shadowed_key_len (
-    .re     (ctrl_shadowed_re),
-    .we     (ctrl_shadowed_we),
-    .wd     (ctrl_shadowed_key_len_wd),
-    .d      (hw2reg.ctrl_shadowed.key_len.d),
-    .qre    (reg2hw.ctrl_shadowed.key_len.re),
-    .qe     (ctrl_shadowed_flds_we[2]),
-    .q      (reg2hw.ctrl_shadowed.key_len.q),
-    .ds     (),
-    .qs     (ctrl_shadowed_key_len_qs)
+      .re (ctrl_shadowed_re),
+      .we (ctrl_shadowed_we),
+      .wd (ctrl_shadowed_key_len_wd),
+      .d  (hw2reg.ctrl_shadowed.key_len.d),
+      .qre(reg2hw.ctrl_shadowed.key_len.re),
+      .qe (ctrl_shadowed_flds_we[2]),
+      .q  (reg2hw.ctrl_shadowed.key_len.q),
+      .ds (),
+      .qs (ctrl_shadowed_key_len_qs)
   );
   assign reg2hw.ctrl_shadowed.key_len.qe = ctrl_shadowed_qe;
 
   //   F[sideload]: 11:11
   prim_subreg_ext #(
-    .DW    (1)
+      .DW(1)
   ) u_ctrl_shadowed_sideload (
-    .re     (ctrl_shadowed_re),
-    .we     (ctrl_shadowed_we),
-    .wd     (ctrl_shadowed_sideload_wd),
-    .d      (hw2reg.ctrl_shadowed.sideload.d),
-    .qre    (reg2hw.ctrl_shadowed.sideload.re),
-    .qe     (ctrl_shadowed_flds_we[3]),
-    .q      (reg2hw.ctrl_shadowed.sideload.q),
-    .ds     (),
-    .qs     (ctrl_shadowed_sideload_qs)
+      .re (ctrl_shadowed_re),
+      .we (ctrl_shadowed_we),
+      .wd (ctrl_shadowed_sideload_wd),
+      .d  (hw2reg.ctrl_shadowed.sideload.d),
+      .qre(reg2hw.ctrl_shadowed.sideload.re),
+      .qe (ctrl_shadowed_flds_we[3]),
+      .q  (reg2hw.ctrl_shadowed.sideload.q),
+      .ds (),
+      .qs (ctrl_shadowed_sideload_qs)
   );
   assign reg2hw.ctrl_shadowed.sideload.qe = ctrl_shadowed_qe;
 
   //   F[prng_reseed_rate]: 14:12
   prim_subreg_ext #(
-    .DW    (3)
+      .DW(3)
   ) u_ctrl_shadowed_prng_reseed_rate (
-    .re     (ctrl_shadowed_re),
-    .we     (ctrl_shadowed_we),
-    .wd     (ctrl_shadowed_prng_reseed_rate_wd),
-    .d      (hw2reg.ctrl_shadowed.prng_reseed_rate.d),
-    .qre    (reg2hw.ctrl_shadowed.prng_reseed_rate.re),
-    .qe     (ctrl_shadowed_flds_we[4]),
-    .q      (reg2hw.ctrl_shadowed.prng_reseed_rate.q),
-    .ds     (),
-    .qs     (ctrl_shadowed_prng_reseed_rate_qs)
+      .re (ctrl_shadowed_re),
+      .we (ctrl_shadowed_we),
+      .wd (ctrl_shadowed_prng_reseed_rate_wd),
+      .d  (hw2reg.ctrl_shadowed.prng_reseed_rate.d),
+      .qre(reg2hw.ctrl_shadowed.prng_reseed_rate.re),
+      .qe (ctrl_shadowed_flds_we[4]),
+      .q  (reg2hw.ctrl_shadowed.prng_reseed_rate.q),
+      .ds (),
+      .qs (ctrl_shadowed_prng_reseed_rate_qs)
   );
   assign reg2hw.ctrl_shadowed.prng_reseed_rate.qe = ctrl_shadowed_qe;
 
   //   F[manual_operation]: 15:15
   prim_subreg_ext #(
-    .DW    (1)
+      .DW(1)
   ) u_ctrl_shadowed_manual_operation (
-    .re     (ctrl_shadowed_re),
-    .we     (ctrl_shadowed_we),
-    .wd     (ctrl_shadowed_manual_operation_wd),
-    .d      (hw2reg.ctrl_shadowed.manual_operation.d),
-    .qre    (reg2hw.ctrl_shadowed.manual_operation.re),
-    .qe     (ctrl_shadowed_flds_we[5]),
-    .q      (reg2hw.ctrl_shadowed.manual_operation.q),
-    .ds     (),
-    .qs     (ctrl_shadowed_manual_operation_qs)
+      .re (ctrl_shadowed_re),
+      .we (ctrl_shadowed_we),
+      .wd (ctrl_shadowed_manual_operation_wd),
+      .d  (hw2reg.ctrl_shadowed.manual_operation.d),
+      .qre(reg2hw.ctrl_shadowed.manual_operation.re),
+      .qe (ctrl_shadowed_flds_we[5]),
+      .q  (reg2hw.ctrl_shadowed.manual_operation.q),
+      .ds (),
+      .qs (ctrl_shadowed_manual_operation_qs)
   );
   assign reg2hw.ctrl_shadowed.manual_operation.qe = ctrl_shadowed_qe;
 
@@ -1029,403 +1338,403 @@ module aes_reg_top (
   assign ctrl_aux_shadowed_gated_we = ctrl_aux_shadowed_we & ctrl_aux_regwen_qs;
   //   F[key_touch_forces_reseed]: 0:0
   prim_subreg_shadow #(
-    .DW      (1),
-    .SwAccess(prim_subreg_pkg::SwAccessRW),
-    .RESVAL  (1'h1),
-    .Mubi    (1'b0)
+      .DW      (1),
+      .SwAccess(prim_subreg_pkg::SwAccessRW),
+      .RESVAL  (1'h1),
+      .Mubi    (1'b0)
   ) u_ctrl_aux_shadowed_key_touch_forces_reseed (
-    .clk_i   (clk_i),
-    .rst_ni  (rst_ni),
-    .rst_shadowed_ni (rst_shadowed_ni),
+      .clk_i   (clk_i),
+      .rst_ni  (rst_ni),
+      .rst_shadowed_ni (rst_shadowed_ni),
 
-    // from register interface
-    .re     (ctrl_aux_shadowed_re),
-    .we     (ctrl_aux_shadowed_gated_we),
-    .wd     (ctrl_aux_shadowed_key_touch_forces_reseed_wd),
+      // from register interface
+      .re(ctrl_aux_shadowed_re),
+      .we(ctrl_aux_shadowed_gated_we),
+      .wd(ctrl_aux_shadowed_key_touch_forces_reseed_wd),
 
-    // from internal hardware
-    .de     (1'b0),
-    .d      ('0),
+      // from internal hardware
+      .de(1'b0),
+      .d ('0),
 
-    // to internal hardware
-    .qe     (),
-    .q      (reg2hw.ctrl_aux_shadowed.key_touch_forces_reseed.q),
-    .ds     (),
+      // to internal hardware
+      .qe(),
+      .q (reg2hw.ctrl_aux_shadowed.key_touch_forces_reseed.q),
+      .ds(),
 
-    // to register interface (read)
-    .qs     (ctrl_aux_shadowed_key_touch_forces_reseed_qs),
+      // to register interface (read)
+      .qs(ctrl_aux_shadowed_key_touch_forces_reseed_qs),
 
-    // Shadow register phase. Relevant for hwext only.
-    .phase  (),
+      // Shadow register phase. Relevant for hwext only.
+      .phase(),
 
-    // Shadow register error conditions
-    .err_update  (ctrl_aux_shadowed_key_touch_forces_reseed_update_err),
-    .err_storage (ctrl_aux_shadowed_key_touch_forces_reseed_storage_err)
+      // Shadow register error conditions
+      .err_update (ctrl_aux_shadowed_key_touch_forces_reseed_update_err),
+      .err_storage(ctrl_aux_shadowed_key_touch_forces_reseed_storage_err)
   );
 
   //   F[force_masks]: 1:1
   prim_subreg_shadow #(
-    .DW      (1),
-    .SwAccess(prim_subreg_pkg::SwAccessRW),
-    .RESVAL  (1'h0),
-    .Mubi    (1'b0)
+      .DW      (1),
+      .SwAccess(prim_subreg_pkg::SwAccessRW),
+      .RESVAL  (1'h0),
+      .Mubi    (1'b0)
   ) u_ctrl_aux_shadowed_force_masks (
-    .clk_i   (clk_i),
-    .rst_ni  (rst_ni),
-    .rst_shadowed_ni (rst_shadowed_ni),
+      .clk_i   (clk_i),
+      .rst_ni  (rst_ni),
+      .rst_shadowed_ni (rst_shadowed_ni),
 
-    // from register interface
-    .re     (ctrl_aux_shadowed_re),
-    .we     (ctrl_aux_shadowed_gated_we),
-    .wd     (ctrl_aux_shadowed_force_masks_wd),
+      // from register interface
+      .re(ctrl_aux_shadowed_re),
+      .we(ctrl_aux_shadowed_gated_we),
+      .wd(ctrl_aux_shadowed_force_masks_wd),
 
-    // from internal hardware
-    .de     (1'b0),
-    .d      ('0),
+      // from internal hardware
+      .de(1'b0),
+      .d ('0),
 
-    // to internal hardware
-    .qe     (),
-    .q      (reg2hw.ctrl_aux_shadowed.force_masks.q),
-    .ds     (),
+      // to internal hardware
+      .qe(),
+      .q (reg2hw.ctrl_aux_shadowed.force_masks.q),
+      .ds(),
 
-    // to register interface (read)
-    .qs     (ctrl_aux_shadowed_force_masks_qs),
+      // to register interface (read)
+      .qs(ctrl_aux_shadowed_force_masks_qs),
 
-    // Shadow register phase. Relevant for hwext only.
-    .phase  (),
+      // Shadow register phase. Relevant for hwext only.
+      .phase(),
 
-    // Shadow register error conditions
-    .err_update  (ctrl_aux_shadowed_force_masks_update_err),
-    .err_storage (ctrl_aux_shadowed_force_masks_storage_err)
+      // Shadow register error conditions
+      .err_update (ctrl_aux_shadowed_force_masks_update_err),
+      .err_storage(ctrl_aux_shadowed_force_masks_storage_err)
   );
 
 
   // R[ctrl_aux_regwen]: V(False)
   prim_subreg #(
-    .DW      (1),
-    .SwAccess(prim_subreg_pkg::SwAccessW0C),
-    .RESVAL  (1'h1),
-    .Mubi    (1'b0)
+      .DW      (1),
+      .SwAccess(prim_subreg_pkg::SwAccessW0C),
+      .RESVAL  (1'h1),
+      .Mubi    (1'b0)
   ) u_ctrl_aux_regwen (
-    .clk_i   (clk_i),
-    .rst_ni  (rst_ni),
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
 
-    // from register interface
-    .we     (ctrl_aux_regwen_we),
-    .wd     (ctrl_aux_regwen_wd),
+      // from register interface
+      .we(ctrl_aux_regwen_we),
+      .wd(ctrl_aux_regwen_wd),
 
-    // from internal hardware
-    .de     (1'b0),
-    .d      ('0),
+      // from internal hardware
+      .de(1'b0),
+      .d ('0),
 
-    // to internal hardware
-    .qe     (),
-    .q      (),
-    .ds     (),
+      // to internal hardware
+      .qe(),
+      .q (),
+      .ds(),
 
-    // to register interface (read)
-    .qs     (ctrl_aux_regwen_qs)
+      // to register interface (read)
+      .qs(ctrl_aux_regwen_qs)
   );
 
 
   // R[trigger]: V(False)
   //   F[start]: 0:0
   prim_subreg #(
-    .DW      (1),
-    .SwAccess(prim_subreg_pkg::SwAccessWO),
-    .RESVAL  (1'h0),
-    .Mubi    (1'b0)
+      .DW      (1),
+      .SwAccess(prim_subreg_pkg::SwAccessWO),
+      .RESVAL  (1'h0),
+      .Mubi    (1'b0)
   ) u_trigger_start (
-    .clk_i   (clk_i),
-    .rst_ni  (rst_ni),
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
 
-    // from register interface
-    .we     (trigger_we),
-    .wd     (trigger_start_wd),
+      // from register interface
+      .we(trigger_we),
+      .wd(trigger_start_wd),
 
-    // from internal hardware
-    .de     (hw2reg.trigger.start.de),
-    .d      (hw2reg.trigger.start.d),
+      // from internal hardware
+      .de(hw2reg.trigger.start.de),
+      .d (hw2reg.trigger.start.d),
 
-    // to internal hardware
-    .qe     (),
-    .q      (reg2hw.trigger.start.q),
-    .ds     (),
+      // to internal hardware
+      .qe(),
+      .q (reg2hw.trigger.start.q),
+      .ds(),
 
-    // to register interface (read)
-    .qs     ()
+      // to register interface (read)
+      .qs()
   );
 
   //   F[key_iv_data_in_clear]: 1:1
   prim_subreg #(
-    .DW      (1),
-    .SwAccess(prim_subreg_pkg::SwAccessWO),
-    .RESVAL  (1'h1),
-    .Mubi    (1'b0)
+      .DW      (1),
+      .SwAccess(prim_subreg_pkg::SwAccessWO),
+      .RESVAL  (1'h1),
+      .Mubi    (1'b0)
   ) u_trigger_key_iv_data_in_clear (
-    .clk_i   (clk_i),
-    .rst_ni  (rst_ni),
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
 
-    // from register interface
-    .we     (trigger_we),
-    .wd     (trigger_key_iv_data_in_clear_wd),
+      // from register interface
+      .we(trigger_we),
+      .wd(trigger_key_iv_data_in_clear_wd),
 
-    // from internal hardware
-    .de     (hw2reg.trigger.key_iv_data_in_clear.de),
-    .d      (hw2reg.trigger.key_iv_data_in_clear.d),
+      // from internal hardware
+      .de(hw2reg.trigger.key_iv_data_in_clear.de),
+      .d (hw2reg.trigger.key_iv_data_in_clear.d),
 
-    // to internal hardware
-    .qe     (),
-    .q      (reg2hw.trigger.key_iv_data_in_clear.q),
-    .ds     (),
+      // to internal hardware
+      .qe(),
+      .q (reg2hw.trigger.key_iv_data_in_clear.q),
+      .ds(),
 
-    // to register interface (read)
-    .qs     ()
+      // to register interface (read)
+      .qs()
   );
 
   //   F[data_out_clear]: 2:2
   prim_subreg #(
-    .DW      (1),
-    .SwAccess(prim_subreg_pkg::SwAccessWO),
-    .RESVAL  (1'h1),
-    .Mubi    (1'b0)
+      .DW      (1),
+      .SwAccess(prim_subreg_pkg::SwAccessWO),
+      .RESVAL  (1'h1),
+      .Mubi    (1'b0)
   ) u_trigger_data_out_clear (
-    .clk_i   (clk_i),
-    .rst_ni  (rst_ni),
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
 
-    // from register interface
-    .we     (trigger_we),
-    .wd     (trigger_data_out_clear_wd),
+      // from register interface
+      .we(trigger_we),
+      .wd(trigger_data_out_clear_wd),
 
-    // from internal hardware
-    .de     (hw2reg.trigger.data_out_clear.de),
-    .d      (hw2reg.trigger.data_out_clear.d),
+      // from internal hardware
+      .de(hw2reg.trigger.data_out_clear.de),
+      .d (hw2reg.trigger.data_out_clear.d),
 
-    // to internal hardware
-    .qe     (),
-    .q      (reg2hw.trigger.data_out_clear.q),
-    .ds     (),
+      // to internal hardware
+      .qe(),
+      .q (reg2hw.trigger.data_out_clear.q),
+      .ds(),
 
-    // to register interface (read)
-    .qs     ()
+      // to register interface (read)
+      .qs()
   );
 
   //   F[prng_reseed]: 3:3
   prim_subreg #(
-    .DW      (1),
-    .SwAccess(prim_subreg_pkg::SwAccessWO),
-    .RESVAL  (1'h1),
-    .Mubi    (1'b0)
+      .DW      (1),
+      .SwAccess(prim_subreg_pkg::SwAccessWO),
+      .RESVAL  (1'h1),
+      .Mubi    (1'b0)
   ) u_trigger_prng_reseed (
-    .clk_i   (clk_i),
-    .rst_ni  (rst_ni),
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
 
-    // from register interface
-    .we     (trigger_we),
-    .wd     (trigger_prng_reseed_wd),
+      // from register interface
+      .we(trigger_we),
+      .wd(trigger_prng_reseed_wd),
 
-    // from internal hardware
-    .de     (hw2reg.trigger.prng_reseed.de),
-    .d      (hw2reg.trigger.prng_reseed.d),
+      // from internal hardware
+      .de(hw2reg.trigger.prng_reseed.de),
+      .d (hw2reg.trigger.prng_reseed.d),
 
-    // to internal hardware
-    .qe     (),
-    .q      (reg2hw.trigger.prng_reseed.q),
-    .ds     (),
+      // to internal hardware
+      .qe(),
+      .q (reg2hw.trigger.prng_reseed.q),
+      .ds(),
 
-    // to register interface (read)
-    .qs     ()
+      // to register interface (read)
+      .qs()
   );
 
 
   // R[status]: V(False)
   //   F[idle]: 0:0
   prim_subreg #(
-    .DW      (1),
-    .SwAccess(prim_subreg_pkg::SwAccessRO),
-    .RESVAL  (1'h0),
-    .Mubi    (1'b0)
+      .DW      (1),
+      .SwAccess(prim_subreg_pkg::SwAccessRO),
+      .RESVAL  (1'h0),
+      .Mubi    (1'b0)
   ) u_status_idle (
-    .clk_i   (clk_i),
-    .rst_ni  (rst_ni),
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
 
-    // from register interface
-    .we     (1'b0),
-    .wd     ('0),
+      // from register interface
+      .we(1'b0),
+      .wd('0),
 
-    // from internal hardware
-    .de     (hw2reg.status.idle.de),
-    .d      (hw2reg.status.idle.d),
+      // from internal hardware
+      .de(hw2reg.status.idle.de),
+      .d (hw2reg.status.idle.d),
 
-    // to internal hardware
-    .qe     (),
-    .q      (reg2hw.status.idle.q),
-    .ds     (),
+      // to internal hardware
+      .qe(),
+      .q (reg2hw.status.idle.q),
+      .ds(),
 
-    // to register interface (read)
-    .qs     (status_idle_qs)
+      // to register interface (read)
+      .qs(status_idle_qs)
   );
 
   //   F[stall]: 1:1
   prim_subreg #(
-    .DW      (1),
-    .SwAccess(prim_subreg_pkg::SwAccessRO),
-    .RESVAL  (1'h0),
-    .Mubi    (1'b0)
+      .DW      (1),
+      .SwAccess(prim_subreg_pkg::SwAccessRO),
+      .RESVAL  (1'h0),
+      .Mubi    (1'b0)
   ) u_status_stall (
-    .clk_i   (clk_i),
-    .rst_ni  (rst_ni),
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
 
-    // from register interface
-    .we     (1'b0),
-    .wd     ('0),
+      // from register interface
+      .we(1'b0),
+      .wd('0),
 
-    // from internal hardware
-    .de     (hw2reg.status.stall.de),
-    .d      (hw2reg.status.stall.d),
+      // from internal hardware
+      .de(hw2reg.status.stall.de),
+      .d (hw2reg.status.stall.d),
 
-    // to internal hardware
-    .qe     (),
-    .q      (),
-    .ds     (),
+      // to internal hardware
+      .qe(),
+      .q (),
+      .ds(),
 
-    // to register interface (read)
-    .qs     (status_stall_qs)
+      // to register interface (read)
+      .qs(status_stall_qs)
   );
 
   //   F[output_lost]: 2:2
   prim_subreg #(
-    .DW      (1),
-    .SwAccess(prim_subreg_pkg::SwAccessRO),
-    .RESVAL  (1'h0),
-    .Mubi    (1'b0)
+      .DW      (1),
+      .SwAccess(prim_subreg_pkg::SwAccessRO),
+      .RESVAL  (1'h0),
+      .Mubi    (1'b0)
   ) u_status_output_lost (
-    .clk_i   (clk_i),
-    .rst_ni  (rst_ni),
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
 
-    // from register interface
-    .we     (1'b0),
-    .wd     ('0),
+      // from register interface
+      .we(1'b0),
+      .wd('0),
 
-    // from internal hardware
-    .de     (hw2reg.status.output_lost.de),
-    .d      (hw2reg.status.output_lost.d),
+      // from internal hardware
+      .de(hw2reg.status.output_lost.de),
+      .d (hw2reg.status.output_lost.d),
 
-    // to internal hardware
-    .qe     (),
-    .q      (reg2hw.status.output_lost.q),
-    .ds     (),
+      // to internal hardware
+      .qe(),
+      .q (reg2hw.status.output_lost.q),
+      .ds(),
 
-    // to register interface (read)
-    .qs     (status_output_lost_qs)
+      // to register interface (read)
+      .qs(status_output_lost_qs)
   );
 
   //   F[output_valid]: 3:3
   prim_subreg #(
-    .DW      (1),
-    .SwAccess(prim_subreg_pkg::SwAccessRO),
-    .RESVAL  (1'h0),
-    .Mubi    (1'b0)
+      .DW      (1),
+      .SwAccess(prim_subreg_pkg::SwAccessRO),
+      .RESVAL  (1'h0),
+      .Mubi    (1'b0)
   ) u_status_output_valid (
-    .clk_i   (clk_i),
-    .rst_ni  (rst_ni),
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
 
-    // from register interface
-    .we     (1'b0),
-    .wd     ('0),
+      // from register interface
+      .we(1'b0),
+      .wd('0),
 
-    // from internal hardware
-    .de     (hw2reg.status.output_valid.de),
-    .d      (hw2reg.status.output_valid.d),
+      // from internal hardware
+      .de(hw2reg.status.output_valid.de),
+      .d (hw2reg.status.output_valid.d),
 
-    // to internal hardware
-    .qe     (),
-    .q      (),
-    .ds     (),
+      // to internal hardware
+      .qe(),
+      .q (),
+      .ds(),
 
-    // to register interface (read)
-    .qs     (status_output_valid_qs)
+      // to register interface (read)
+      .qs(status_output_valid_qs)
   );
 
   //   F[input_ready]: 4:4
   prim_subreg #(
-    .DW      (1),
-    .SwAccess(prim_subreg_pkg::SwAccessRO),
-    .RESVAL  (1'h0),
-    .Mubi    (1'b0)
+      .DW      (1),
+      .SwAccess(prim_subreg_pkg::SwAccessRO),
+      .RESVAL  (1'h0),
+      .Mubi    (1'b0)
   ) u_status_input_ready (
-    .clk_i   (clk_i),
-    .rst_ni  (rst_ni),
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
 
-    // from register interface
-    .we     (1'b0),
-    .wd     ('0),
+      // from register interface
+      .we(1'b0),
+      .wd('0),
 
-    // from internal hardware
-    .de     (hw2reg.status.input_ready.de),
-    .d      (hw2reg.status.input_ready.d),
+      // from internal hardware
+      .de(hw2reg.status.input_ready.de),
+      .d (hw2reg.status.input_ready.d),
 
-    // to internal hardware
-    .qe     (),
-    .q      (),
-    .ds     (),
+      // to internal hardware
+      .qe(),
+      .q (),
+      .ds(),
 
-    // to register interface (read)
-    .qs     (status_input_ready_qs)
+      // to register interface (read)
+      .qs(status_input_ready_qs)
   );
 
   //   F[alert_recov_ctrl_update_err]: 5:5
   prim_subreg #(
-    .DW      (1),
-    .SwAccess(prim_subreg_pkg::SwAccessRO),
-    .RESVAL  (1'h0),
-    .Mubi    (1'b0)
+      .DW      (1),
+      .SwAccess(prim_subreg_pkg::SwAccessRO),
+      .RESVAL  (1'h0),
+      .Mubi    (1'b0)
   ) u_status_alert_recov_ctrl_update_err (
-    .clk_i   (clk_i),
-    .rst_ni  (rst_ni),
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
 
-    // from register interface
-    .we     (1'b0),
-    .wd     ('0),
+      // from register interface
+      .we(1'b0),
+      .wd('0),
 
-    // from internal hardware
-    .de     (hw2reg.status.alert_recov_ctrl_update_err.de),
-    .d      (hw2reg.status.alert_recov_ctrl_update_err.d),
+      // from internal hardware
+      .de(hw2reg.status.alert_recov_ctrl_update_err.de),
+      .d (hw2reg.status.alert_recov_ctrl_update_err.d),
 
-    // to internal hardware
-    .qe     (),
-    .q      (),
-    .ds     (),
+      // to internal hardware
+      .qe(),
+      .q (),
+      .ds(),
 
-    // to register interface (read)
-    .qs     (status_alert_recov_ctrl_update_err_qs)
+      // to register interface (read)
+      .qs(status_alert_recov_ctrl_update_err_qs)
   );
 
   //   F[alert_fatal_fault]: 6:6
   prim_subreg #(
-    .DW      (1),
-    .SwAccess(prim_subreg_pkg::SwAccessRO),
-    .RESVAL  (1'h0),
-    .Mubi    (1'b0)
+      .DW      (1),
+      .SwAccess(prim_subreg_pkg::SwAccessRO),
+      .RESVAL  (1'h0),
+      .Mubi    (1'b0)
   ) u_status_alert_fatal_fault (
-    .clk_i   (clk_i),
-    .rst_ni  (rst_ni),
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
 
-    // from register interface
-    .we     (1'b0),
-    .wd     ('0),
+      // from register interface
+      .we(1'b0),
+      .wd('0),
 
-    // from internal hardware
-    .de     (hw2reg.status.alert_fatal_fault.de),
-    .d      (hw2reg.status.alert_fatal_fault.d),
+      // from internal hardware
+      .de(hw2reg.status.alert_fatal_fault.de),
+      .d (hw2reg.status.alert_fatal_fault.d),
 
-    // to internal hardware
-    .qe     (),
-    .q      (),
-    .ds     (),
+      // to internal hardware
+      .qe(),
+      .q (),
+      .ds(),
 
-    // to register interface (read)
-    .qs     (status_alert_fatal_fault_qs)
+      // to register interface (read)
+      .qs(status_alert_fatal_fault_qs)
   );
 
 
@@ -1433,16 +1742,16 @@ module aes_reg_top (
   logic [33:0] addr_hit;
   always_comb begin
     addr_hit = '0;
-    addr_hit[ 0] = (reg_addr == AES_ALERT_TEST_OFFSET);
-    addr_hit[ 1] = (reg_addr == AES_KEY_SHARE0_0_OFFSET);
-    addr_hit[ 2] = (reg_addr == AES_KEY_SHARE0_1_OFFSET);
-    addr_hit[ 3] = (reg_addr == AES_KEY_SHARE0_2_OFFSET);
-    addr_hit[ 4] = (reg_addr == AES_KEY_SHARE0_3_OFFSET);
-    addr_hit[ 5] = (reg_addr == AES_KEY_SHARE0_4_OFFSET);
-    addr_hit[ 6] = (reg_addr == AES_KEY_SHARE0_5_OFFSET);
-    addr_hit[ 7] = (reg_addr == AES_KEY_SHARE0_6_OFFSET);
-    addr_hit[ 8] = (reg_addr == AES_KEY_SHARE0_7_OFFSET);
-    addr_hit[ 9] = (reg_addr == AES_KEY_SHARE1_0_OFFSET);
+    addr_hit[0] = (reg_addr == AES_ALERT_TEST_OFFSET);
+    addr_hit[1] = (reg_addr == AES_KEY_SHARE0_0_OFFSET);
+    addr_hit[2] = (reg_addr == AES_KEY_SHARE0_1_OFFSET);
+    addr_hit[3] = (reg_addr == AES_KEY_SHARE0_2_OFFSET);
+    addr_hit[4] = (reg_addr == AES_KEY_SHARE0_3_OFFSET);
+    addr_hit[5] = (reg_addr == AES_KEY_SHARE0_4_OFFSET);
+    addr_hit[6] = (reg_addr == AES_KEY_SHARE0_5_OFFSET);
+    addr_hit[7] = (reg_addr == AES_KEY_SHARE0_6_OFFSET);
+    addr_hit[8] = (reg_addr == AES_KEY_SHARE0_7_OFFSET);
+    addr_hit[9] = (reg_addr == AES_KEY_SHARE1_0_OFFSET);
     addr_hit[10] = (reg_addr == AES_KEY_SHARE1_1_OFFSET);
     addr_hit[11] = (reg_addr == AES_KEY_SHARE1_2_OFFSET);
     addr_hit[12] = (reg_addr == AES_KEY_SHARE1_3_OFFSET);
@@ -1469,7 +1778,7 @@ module aes_reg_top (
     addr_hit[33] = (reg_addr == AES_STATUS_OFFSET);
   end
 
-  assign addrmiss = (reg_re || reg_we) ? ~|addr_hit : 1'b0 ;
+  assign addrmiss = (reg_re || reg_we) ? ~|addr_hit : 1'b0;
 
   // Check sub-word write is permitted
   always_comb begin
