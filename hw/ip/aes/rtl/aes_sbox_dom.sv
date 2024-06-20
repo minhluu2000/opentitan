@@ -801,7 +801,7 @@ module aes_dom_dep_mul_gf2pn #(
         .Width(2 * NPower)
     ) u_prim_buf_ab_mul_abx_b (
         .in_i ({a_mul_ax_b, a_mul_ax_b_buf}),
-        .out_o({b_mul_bx_b, b_mul_bx_b_buf})
+        .out_o({a_mul_ax_b_buf, a_mul_ax_b_buf})
     );
 `elsif BUGNUMSBOXDOMDEPMUL10
     logic [NPower-1:0] a_mul_ax_b_buf, b_mul_bx_b_buf;
@@ -1315,12 +1315,12 @@ module aes_sbox_dom #(
   // Do the inversion in normal basis X.
 `ifdef BUGNUMSBOXAESSBOX3
   aes_dom_inverse_gf2p8 #(
-      .PipelineMul(~PipelineMul)
+      .PipelineMul(PipelineMul)
   ) u_aes_dom_inverse_gf2p8 (
       .clk_i  (clk_i),
       .rst_ni (rst_ni),
       .we_i   (~we),
-      .a_y    (in_mask_basis_x),   // input
+      .a_y    (~in_mask_basis_x),   // input
       .b_y    (in_data_basis_x),   // input
       .prd_i  (in_prd),            // input
       .a_y_inv(out_mask_basis_x),  // output
