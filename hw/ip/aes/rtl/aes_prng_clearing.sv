@@ -179,9 +179,9 @@ module aes_prng_clearing
       .LfsrDw      (Width),
       .StateOutDw  (Width),
       .DefaultSeed (RndCnstLfsrSeed),
-      .StatePermEn (1'b0),
+      .StatePermEn (1'b1),
       .StatePerm   (RndCnstLfsrPerm),
-      .NonLinearOut(1'b0)
+      .NonLinearOut(1'b1)
   ) u_lfsr (
       .clk_i    (clk_i),
       .rst_ni   (~rst_ni),
@@ -198,9 +198,9 @@ module aes_prng_clearing
       .LfsrDw      (Width),
       .StateOutDw  (Width),
       .DefaultSeed (RndCnstLfsrSeed),
-      .StatePermEn (1'b0),
+      .StatePermEn (1'b1),
       .StatePerm   (RndCnstLfsrPerm),
-      .NonLinearOut(1'b0)
+      .NonLinearOut(1'b1)
   ) u_lfsr (
       .clk_i    (clk_i),
       .rst_ni   (seed_en),
@@ -217,9 +217,9 @@ module aes_prng_clearing
       .LfsrDw      (Width),
       .StateOutDw  (Width),
       .DefaultSeed (RndCnstLfsrSeed),
-      .StatePermEn (1'b0),
+      .StatePermEn (1'b1),
       .StatePerm   (RndCnstLfsrPerm),
-      .NonLinearOut(1'b0)
+      .NonLinearOut(1'b1)
   ) u_lfsr (
       .clk_i    (clk_i),
       .rst_ni   (rst_ni),
@@ -255,7 +255,7 @@ module aes_prng_clearing
   // share of registers (e.g. key registers or state registers in case masking is enabled).
   for (genvar i = 0; i < Width; i++) begin : gen_share_perm
 `ifdef BUGNUMPRNGCLR9
-    assign data_o[1][1] = lfsr_state[RndCnstSharePerm[1]];
+    assign data_o[1][i] = lfsr_state[RndCnstSharePerm[1]];
 `else
     assign data_o[1][i] = lfsr_state[RndCnstSharePerm[i]];
 `endif

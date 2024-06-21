@@ -61,9 +61,9 @@ module aes_ctr_fsm
     // ctr_slice_idx_d = ctr_slice_idx_q;
     ctr_carry_d = ctr_carry_q;
 `elsif BUGNUMCNRFSM1T
-    aes_ctr_ns      = ctr_carry_q;
-    ctr_slice_idx_d = aes_ctr_cs;
-    ctr_carry_d     = ctr_slice_idx_q;
+    aes_ctr_ns      = aes_ctr_cs;
+    ctr_slice_idx_d = ctr_slice_idx_q;
+    // ctr_carry_d     = ctr_carry_q;
 `else
     aes_ctr_ns      = aes_ctr_cs;
     ctr_slice_idx_d = ctr_slice_idx_q;
