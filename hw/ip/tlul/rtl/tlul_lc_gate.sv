@@ -13,32 +13,32 @@ module tlul_lc_gate
   import tlul_pkg::*;
   import lc_ctrl_pkg::*;
 #(
-  // Number of LC gating muxes in each direction.
-  // It is recommended to set this parameter to 2, which results
-  // in a total of 4 gating muxes.
-  parameter int NumGatesPerDirection = 2
+    // Number of LC gating muxes in each direction.
+    // It is recommended to set this parameter to 2, which results
+    // in a total of 4 gating muxes.
+    parameter int NumGatesPerDirection = 2
 ) (
-  input clk_i,
-  input rst_ni,
+    input clk_i,
+    input rst_ni,
 
-  // To host
-  input  tl_h2d_t tl_h2d_i,
-  output tl_d2h_t tl_d2h_o,
+    // To host
+    input  tl_h2d_t tl_h2d_i,
+    output tl_d2h_t tl_d2h_o,
 
-  // To device
-  output tl_h2d_t tl_h2d_o,
-  input  tl_d2h_t tl_d2h_i,
+    // To device
+    output tl_h2d_t tl_h2d_o,
+    input  tl_d2h_t tl_d2h_i,
 
-  // Flush control signaling
-  input flush_req_i,
-  output logic flush_ack_o,
+    // Flush control signaling
+    input flush_req_i,
+    output logic flush_ack_o,
 
-  // Indicates whether there are pending responses on the device side.
-  output logic resp_pending_o,
+    // Indicates whether there are pending responses on the device side.
+    output logic resp_pending_o,
 
-  // LC control signal
-  input  lc_tx_t  lc_en_i,
-  output logic err_o
+    // LC control signal
+    input  lc_tx_t lc_en_i,
+    output logic   err_o
 );
 
   //////////////////
@@ -49,40 +49,53 @@ module tlul_lc_gate
   lc_tx_t [NumGatesPerDirection-1:0] err_en_buf;
 
   prim_lc_sync #(
-    .NumCopies(NumGatesPerDirection),
-    .AsyncOn(0)
+      .NumCopies(NumGatesPerDirection),
+      .AsyncOn  (0)
   ) u_err_en_sync (
-    .clk_i,
-    .rst_ni,
-    .lc_en_i(err_en),
-    .lc_en_o(err_en_buf)
+      .clk_i,
+      .rst_ni,
+      .lc_en_i(err_en),
+      .lc_en_o(err_en_buf)
   );
 
-  tl_h2d_t tl_h2d_int [NumGatesPerDirection+1];
-  tl_d2h_t tl_d2h_int [NumGatesPerDirection+1];
+  tl_h2d_t tl_h2d_int[NumGatesPerDirection+1];
+  tl_d2h_t tl_d2h_int[NumGatesPerDirection+1];
   for (genvar k = 0; k < NumGatesPerDirection; k++) begin : gen_lc_gating_muxes
     // H -> D path.
     prim_blanker #(
-      .Width($bits(tl_h2d_t))
+        .Width($bits(tl_h2d_t))
     ) u_prim_blanker_h2d (
-      .in_i(tl_h2d_int[k]),
-      .en_i(lc_tx_test_false_strict(err_en_buf[k])),
-      .out_o(tl_h2d_int[k+1])
+        .in_i (tl_h2d_int[k]),
+        .en_i (lc_tx_test_false_strict(err_en_buf[k])),
+        .out_o(tl_h2d_int[k+1])
     );
 
     // D -> H path.
     prim_blanker #(
-      .Width($bits(tl_d2h_t))
+        .Width($bits(tl_d2h_t))
     ) u_prim_blanker_d2h (
-      .in_i(tl_d2h_int[k+1]),
-      .en_i(lc_tx_test_false_strict(err_en_buf[k])),
-      .out_o(tl_d2h_int[k])
+        .in_i (tl_d2h_int[k+1]),
+        .en_i (lc_tx_test_false_strict(err_en_buf[k])),
+        .out_o(tl_d2h_int[k])
     );
   end
 
   // Assign signals on the device side.
+`ifdef BUGNUMLULG1
+  assign tl_h2d_o = tl_h2d_int[NumGatesPerDirection];
+  assign tl_d2h_int[NumGatesPerDirection] = ~tl_d2h_i;
+`elsif BUGNUMLULG2
+  assign tl_h2d_o = '0;
+  assign tl_d2h_int[NumGatesPerDirection] = tl_d2h_i;
+`elsif BUGNUMLULG1T
+  assign tl_h2d_o = tl_h2d_int[NumGatesPerDirection];
+  //assign tl_d2h_int[NumGatesPerDirection] = tl_d2h_i;
+
+
+`else
   assign tl_h2d_o = tl_h2d_int[NumGatesPerDirection];
   assign tl_d2h_int[NumGatesPerDirection] = tl_d2h_i;
+`endif
 
   ///////////////////////////
   // Host Side Interposing //
@@ -146,9 +159,78 @@ module tlul_lc_gate
   logic [1:0] outstanding_txn;
   logic a_ack;
   logic d_ack;
+`ifdef BUGNUMLULG3
+  assign a_ack = tl_h2d_i.a_valid & ~tl_d2h_o.a_ready;
+  assign d_ack = tl_h2d_i.d_ready & tl_d2h_o.d_valid;
+`elsif BUGNUMLULG4
+  assign a_ack = tl_h2d_i.a_valid & tl_d2h_o.a_ready;
+  assign d_ack = '0 & tl_d2h_o.d_valid;
+`elsif BUGNUMLULG2T
+  assign d_ack = tl_h2d_i.a_valid & tl_d2h_o.a_ready;
+  assign a_ack = tl_h2d_i.d_ready & tl_d2h_o.d_valid;
+`elsif BUGNUMLULG3T
+  // assign a_ack = tl_h2d_i.a_valid & tl_d2h_o.a_ready;
+  assign d_ack = tl_h2d_i.d_ready & tl_d2h_o.d_valid;
+`elsif BUGNUMLULG5
+  assign a_ack = tl_h2d_i.a_valid & tl_d2h_o.a_ready;
+  assign d_ack = tl_h2d_i.d_ready & ~tl_d2h_o.d_valid;
+`else
   assign a_ack = tl_h2d_i.a_valid & tl_d2h_o.a_ready;
   assign d_ack = tl_h2d_i.d_ready & tl_d2h_o.d_valid;
+`endif
 
+
+`ifdef BUGNUMLULG6
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      outstanding_txn <= '1;
+    end else if (a_ack && !d_ack) begin
+      outstanding_txn <= outstanding_txn + 1'b1;
+    end else if (d_ack && !a_ack) begin
+      outstanding_txn <= outstanding_txn - 1'b1;
+    end
+  end
+`elsif BUGNUMLULG7
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      outstanding_txn <= '0;
+    end else if (a_ack && !d_ack) begin
+      outstanding_txn <= outstanding_txn - 1'b1;
+    end else if (d_ack && !a_ack) begin
+      outstanding_txn <= outstanding_txn + 1'b1;
+    end
+  end
+`elsif BUGNUMLULG8
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      //outstanding_txn <= '0;
+    end else if (a_ack && !d_ack) begin
+      outstanding_txn <= outstanding_txn + 1'b1;
+    end else if (d_ack && !a_ack) begin
+      outstanding_txn <= outstanding_txn - 1'b1;
+    end
+  end
+`elsif BUGNUMLULG4T
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      outstanding_txn <= '0;
+    end else if (a_ack && !d_ack) begin
+      outstanding_txn <= outstanding_txn + 1'b1;
+    end else if (d_ack && !a_ack) begin
+      //outstanding_txn <= outstanding_txn - 1'b1;
+    end
+  end
+`elsif BUGNUMLULG5T
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      outstanding_txn <= '0;
+    end else if (a_ack && !a_ack) begin
+      outstanding_txn <= outstanding_txn + 1'b1;
+    end else if (d_ack && !d_ack) begin
+      outstanding_txn <= outstanding_txn - 1'b1;
+    end
+  end
+`else
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
       outstanding_txn <= '0;
@@ -158,7 +240,7 @@ module tlul_lc_gate
       outstanding_txn <= outstanding_txn - 1'b1;
     end
   end
-
+`endif
   logic block_cmd;
   always_comb begin
     block_cmd = '0;
@@ -169,6 +251,20 @@ module tlul_lc_gate
     resp_pending_o = 1'b0;
 
     unique case (state_q)
+
+
+
+`ifdef BUGNUMLULG6T
+      StActive: begin
+        if (lc_tx_test_false_loose(lc_en_i) || ~flush_req_i) begin
+          state_d = StOutstanding;
+        end
+        if (outstanding_txn != '0) begin
+          resp_pending_o = 1'b1;
+        end
+      end
+
+`else
       StActive: begin
         if (lc_tx_test_false_loose(lc_en_i) || flush_req_i) begin
           state_d = StOutstanding;
@@ -177,7 +273,29 @@ module tlul_lc_gate
           resp_pending_o = 1'b1;
         end
       end
+`endif
 
+
+
+`ifdef BUGNUMLULG7T
+      StOutstanding: begin
+        block_cmd = 1'b1;
+        if (outstanding_txn != '0) begin
+          state_d = lc_tx_test_false_loose(lc_en_i) ? StError : StFlush;
+        end else begin
+          resp_pending_o = 1'b1;
+        end
+      end
+`elsif BUGNUMLULG8T
+      StOutstanding: begin
+        block_cmd = 1'b1;
+        if (outstanding_txn == '0) begin
+          //state_d = lc_tx_test_false_loose(lc_en_i) ? StError : StFlush;
+        end else begin
+          resp_pending_o = 1'b1;
+        end
+      end
+`else
       StOutstanding: begin
         block_cmd = 1'b1;
         if (outstanding_txn == '0) begin
@@ -186,9 +304,14 @@ module tlul_lc_gate
           resp_pending_o = 1'b1;
         end
       end
+`endif
+
+
+
+
 
       StFlush: begin
-        block_cmd = 1'b1;
+        block_cmd   = 1'b1;
         flush_ack_o = 1'b1;
         if (lc_tx_test_false_loose(lc_en_i)) begin
           state_d = StError;
@@ -197,13 +320,42 @@ module tlul_lc_gate
         end
       end
 
+`ifdef BUGNUMLULG9
+      StError: begin
+        err_en = On;
+        if (lc_tx_test_true_strict(lc_en_i)) begin
+          // state_d = StErrorOutstanding;
+        end
+      end
+
+
+`else
       StError: begin
         err_en = On;
         if (lc_tx_test_true_strict(lc_en_i)) begin
           state_d = StErrorOutstanding;
         end
       end
+`endif
 
+`ifdef BUGNUMLULG10
+      StErrorOutstanding: begin
+        err_en = On;
+        block_cmd = 1'b1;
+        if (outstanding_txn == '1) begin
+          state_d = StActive;
+        end
+      end
+`elsif BUGNUMLULG11
+      StErrorOutstanding: begin
+        err_en = On;
+        block_cmd = 1'b1;
+        if (outstanding_txn == '0) begin
+          //  state_d = StActive;
+        end
+      end
+
+`else
       StErrorOutstanding: begin
         err_en = On;
         block_cmd = 1'b1;
@@ -211,13 +363,13 @@ module tlul_lc_gate
           state_d = StActive;
         end
       end
-
+`endif
       default: begin
-        err_o = 1'b1;
+        err_o  = 1'b1;
         err_en = On;
       end
 
-    endcase // unique case (state_q)
+    endcase  // unique case (state_q)
   end
 
 
@@ -226,14 +378,17 @@ module tlul_lc_gate
   // since erroring back is considered a convenience feature so that the bus does not lock up.
   tl_h2d_t tl_h2d_error;
   tl_d2h_t tl_d2h_error;
+
+`ifdef BUGNUMLULG12
   always_comb begin
-    tl_h2d_int[0] = tl_h2d_i;
-    tl_d2h_o      = tl_d2h_int[0];
-    tl_h2d_error  = '0;
+
+    // tl_h2d_int[0] = tl_h2d_i;
+    tl_d2h_o     = tl_d2h_int[0];
+    tl_h2d_error = '0;
 
     if (lc_tx_test_true_loose(err_en)) begin
-      tl_h2d_error  = tl_h2d_i;
-      tl_d2h_o      = tl_d2h_error;
+      tl_h2d_error = tl_h2d_i;
+      tl_d2h_o     = tl_d2h_error;
     end
 
     if (block_cmd) begin
@@ -243,11 +398,86 @@ module tlul_lc_gate
     end
   end
 
+
+`elsif BUGNUMLULG8T
+  always_comb begin
+
+    tl_h2d_int[0] = tl_h2d_i;
+    tl_d2h_o      = tl_d2h_int[0];
+    tl_h2d_error  = '0;
+
+    if (lc_tx_test_true_loose(err_en)) begin
+      tl_h2d_error = tl_d2h_error;
+      tl_d2h_o     = tl_h2d_error;
+    end
+
+    if (block_cmd) begin
+      tl_d2h_o.a_ready = 1'b0;
+      tl_h2d_int[0].a_valid = 1'b0;
+      tl_h2d_error.a_valid = 1'b0;
+    end
+  end
+
+`elsif BUGNUMLULG9T
+  always_comb begin
+
+    tl_h2d_int[0] = tl_h2d_i;
+    tl_d2h_o      = tl_d2h_int[0];
+    tl_h2d_error  = '0;
+
+    if (lc_tx_test_true_loose(err_en)) begin
+      // tl_h2d_error = tl_h2d_i;
+      tl_d2h_o = tl_d2h_error;
+    end
+
+    if (block_cmd) begin
+      tl_d2h_o.a_ready = 1'b0;
+      tl_h2d_int[0].a_valid = 1'b0;
+      tl_h2d_error.a_valid = 1'b0;
+    end
+  end
+`elsif BUGNUMLULG10T
+  always_comb begin
+
+    tl_h2d_int[0] = tl_h2d_i;
+    tl_d2h_o      = tl_d2h_int[0];
+    tl_h2d_error  = '0;
+
+    if (lc_tx_test_true_loose(err_en)) begin
+      tl_h2d_error = tl_h2d_i;
+      tl_d2h_o     = '0;
+    end
+
+    if (block_cmd) begin
+      tl_d2h_o.a_ready = 1'b0;
+      tl_h2d_int[0].a_valid = 1'b0;
+      //tl_h2d_error.a_valid = 1'b0;
+    end
+  end
+`else
+  always_comb begin
+
+    tl_h2d_int[0] = tl_h2d_i;
+    tl_d2h_o      = tl_d2h_int[0];
+    tl_h2d_error  = '0;
+
+    if (lc_tx_test_true_loose(err_en)) begin
+      tl_h2d_error = tl_h2d_i;
+      tl_d2h_o     = tl_d2h_error;
+    end
+
+    if (block_cmd) begin
+      tl_d2h_o.a_ready = 1'b0;
+      tl_h2d_int[0].a_valid = 1'b0;
+      tl_h2d_error.a_valid = 1'b0;
+    end
+  end
+`endif
   tlul_err_resp u_tlul_err_resp (
-    .clk_i,
-    .rst_ni,
-    .tl_h_i(tl_h2d_error),
-    .tl_h_o(tl_d2h_error)
+      .clk_i,
+      .rst_ni,
+      .tl_h_i(tl_h2d_error),
+      .tl_h_o(tl_d2h_error)
   );
 
   // Add assertion
