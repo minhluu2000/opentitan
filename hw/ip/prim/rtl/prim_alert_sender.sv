@@ -44,25 +44,25 @@
 module prim_alert_sender
   import prim_alert_pkg::*;
 #(
-  // enables additional synchronization logic
-  parameter bit AsyncOn = 1'b1,
-  // alert sender will latch the incoming alert event permanently and
-  // keep on sending alert events until the next reset.
-  parameter bit IsFatal = 1'b0
+    // enables additional synchronization logic
+    parameter bit AsyncOn = 1'b1,
+    // alert sender will latch the incoming alert event permanently and
+    // keep on sending alert events until the next reset.
+    parameter bit IsFatal = 1'b0
 ) (
-  input             clk_i,
-  input             rst_ni,
-  // alert test trigger (this will never be latched, even if IsFatal == 1)
-  input             alert_test_i,
-  // native alert from the peripheral
-  input             alert_req_i,
-  output logic      alert_ack_o,
-  // state of the alert latching register
-  output logic      alert_state_o,
-  // ping input diff pair and ack diff pair
-  input alert_rx_t  alert_rx_i,
-  // alert output diff pair
-  output alert_tx_t alert_tx_o
+    input             clk_i,
+    input             rst_ni,
+    // alert test trigger (this will never be latched, even if IsFatal == 1)
+    input             alert_test_i,
+    // native alert from the peripheral
+    input             alert_req_i,
+    output logic      alert_ack_o,
+    // state of the alert latching register
+    output logic      alert_state_o,
+    // ping input diff pair and ack diff pair
+    input  alert_rx_t alert_rx_i,
+    // alert output diff pair
+    output alert_tx_t alert_tx_o
 );
 
 
@@ -73,52 +73,48 @@ module prim_alert_sender
 
   // This prevents further tool optimizations of the differential signal.
   prim_sec_anchor_buf #(
-    .Width(2)
+      .Width(2)
   ) u_prim_buf_ping (
-    .in_i({alert_rx_i.ping_n,
-           alert_rx_i.ping_p}),
-    .out_o({ping_n,
-            ping_p})
+      .in_i ({alert_rx_i.ping_n, alert_rx_i.ping_p}),
+      .out_o({ping_n, ping_p})
   );
 
   prim_diff_decode #(
-    .AsyncOn(AsyncOn)
+      .AsyncOn(AsyncOn)
   ) u_decode_ping (
-    .clk_i,
-    .rst_ni,
-    .diff_pi  ( ping_p      ),
-    .diff_ni  ( ping_n      ),
-    .level_o  (             ),
-    .rise_o   (             ),
-    .fall_o   (             ),
-    .event_o  ( ping_event  ),
-    .sigint_o ( ping_sigint )
+      .clk_i,
+      .rst_ni,
+      .diff_pi (ping_p),
+      .diff_ni (ping_n),
+      .level_o (),
+      .rise_o  (),
+      .fall_o  (),
+      .event_o (ping_event),
+      .sigint_o(ping_sigint)
   );
 
   logic ack_sigint, ack_level, ack_n, ack_p;
 
   // This prevents further tool optimizations of the differential signal.
   prim_sec_anchor_buf #(
-    .Width(2)
+      .Width(2)
   ) u_prim_buf_ack (
-    .in_i({alert_rx_i.ack_n,
-           alert_rx_i.ack_p}),
-    .out_o({ack_n,
-            ack_p})
+      .in_i ({alert_rx_i.ack_n, alert_rx_i.ack_p}),
+      .out_o({ack_n, ack_p})
   );
 
   prim_diff_decode #(
-    .AsyncOn(AsyncOn)
+      .AsyncOn(AsyncOn)
   ) u_decode_ack (
-    .clk_i,
-    .rst_ni,
-    .diff_pi  ( ack_p      ),
-    .diff_ni  ( ack_n      ),
-    .level_o  ( ack_level  ),
-    .rise_o   (            ),
-    .fall_o   (            ),
-    .event_o  (            ),
-    .sigint_o ( ack_sigint )
+      .clk_i,
+      .rst_ni,
+      .diff_pi (ack_p),
+      .diff_ni (ack_n),
+      .level_o (ack_level),
+      .rise_o  (),
+      .fall_o  (),
+      .event_o (),
+      .sigint_o(ack_sigint)
   );
 
 
@@ -133,18 +129,45 @@ module prim_alert_sender
     PingHsPhase2,
     Pause0,
     Pause1
-    } state_e;
+  } state_e;
   state_e state_d, state_q;
   logic alert_pq, alert_nq, alert_pd, alert_nd;
   logic sigint_detected;
+`ifdef BUGNUMPRIMSENDER1
+  assign sigint_detected = ack_sigint & ping_sigint;
 
+`elsif BUGNUMPRIMSENDER2
+  assign sigint_detected = '0;
+`elsif BUGNUMPRIMSENDER1T
+  // assign sigint_detected = ack_sigint | ping_sigint;
+
+`else
   assign sigint_detected = ack_sigint | ping_sigint;
-
+`endif
 
   // diff pair output
+`ifdef BUGNUMPRIMSENDER3
+  assign alert_tx_o.alert_p = ~alert_pq;
+  assign alert_tx_o.alert_n = alert_nq;
+`elsif BUGNUMPRIMSENDER4
+  assign alert_tx_o.alert_p = alert_pq;
+  assign alert_tx_o.alert_n = ~alert_nq;
+`elsif BUGNUMPRIMSENDER5
+  assign alert_tx_o.alert_p = '1;
+  assign alert_tx_o.alert_n = alert_nq;
+`elsif BUGNUMPRIMSENDER6
+  assign alert_tx_o.alert_p = alert_pq;
+  //assign alert_tx_o.alert_n = alert_nq;
+`elsif BUGNUMPRIMSENDER2T
+  assign alert_tx_o.alert_p = alert_pq;
+  assign alert_tx_o.alert_n = '0;
+`elsif BUGNUMPRIMSENDER3T
+  //assign alert_tx_o.alert_p = alert_pq;
+  assign alert_tx_o.alert_n = alert_nq;
+`else
   assign alert_tx_o.alert_p = alert_pq;
   assign alert_tx_o.alert_n = alert_nq;
-
+`endif
   // alert and ping set regs
   logic alert_set_d, alert_set_q, alert_clr;
   logic alert_test_set_d, alert_test_set_q;
@@ -154,34 +177,151 @@ module prim_alert_sender
   // if handshake is ongoing, capture additional alert requests.
   logic alert_req;
   prim_sec_anchor_buf #(
-    .Width(1)
+      .Width(1)
   ) u_prim_buf_in_req (
-    .in_i(alert_req_i),
-    .out_o(alert_req)
+      .in_i (alert_req_i),
+      .out_o(alert_req)
   );
+`ifdef BUGNUMPRIMSENDER7
+`elsif BUGNUMPRIMSENDER8
+  assign alert_req_trigger = '0;
+`elsif BUGNUMPRIMSENDER9
+  assign alert_req_trigger = alert_req;
+`elsif BUGNUMPRIMSENDER4T
+  // assign alert_req_trigger = alert_req | alert_set_q;
 
+`else
   assign alert_req_trigger = alert_req | alert_set_q;
+`endif
+
+`ifdef BUGNUMPRIMSENDER10
+  if (!IsFatal) begin : gen_fatal
+    assign alert_set_d = alert_req_trigger;
+  end else begin : gen_recov
+    assign alert_set_d = (alert_clr) ? 1'b0 : alert_req_trigger;
+  end
+`elsif BUGNUMPRIMSENDER11
+  if (IsFatal) begin : gen_fatal
+    assign alert_set_d = '0;
+  end else begin : gen_recov
+    assign alert_set_d = (alert_clr) ? 1'b0 : alert_req_trigger;
+  end
+`elsif BUGNUMPRIMSENDER5T
+  if (IsFatal) begin : gen_fatal
+    // assign alert_set_d = alert_req_trigger;
+  end else begin : gen_recov
+    assign alert_set_d = (alert_clr) ? 1'b0 : alert_req_trigger;
+  end
+
+`else
   if (IsFatal) begin : gen_fatal
     assign alert_set_d = alert_req_trigger;
   end else begin : gen_recov
     assign alert_set_d = (alert_clr) ? 1'b0 : alert_req_trigger;
   end
-
+`endif
   // the alert test request is always cleared.
-  assign alert_test_trigger = alert_test_i | alert_test_set_q;
+`ifdef BUGNUMPRIMSENDER12
+  assign alert_test_trigger = '0;
+  assign alert_test_set_d   = (alert_clr) ? 1'b0 : alert_test_trigger;
+
+  logic alert_trigger;
+  assign alert_trigger = alert_req_trigger | alert_test_trigger;
+
+  assign ping_trigger = ping_set_q | ping_event;
+  assign ping_set_d = (ping_clr) ? 1'b0 : ping_trigger;
+
+
+  // alert event acknowledge and state (not affected by alert_test_i)
+  assign alert_ack_o = alert_clr & alert_set_q;
+  assign alert_state_o = alert_set_q;
+`elsif BUGNUMPRIMSENDER13
+  //assign alert_test_trigger = alert_test_i | alert_test_set_q;
   assign alert_test_set_d = (alert_clr) ? 1'b0 : alert_test_trigger;
 
   logic alert_trigger;
   assign alert_trigger = alert_req_trigger | alert_test_trigger;
 
   assign ping_trigger = ping_set_q | ping_event;
-  assign ping_set_d  = (ping_clr) ? 1'b0 : ping_trigger;
+  assign ping_set_d = (ping_clr) ? 1'b0 : ping_trigger;
+
+
+  // alert event acknowledge and state (not affected by alert_test_i)
+  assign alert_ack_o = alert_clr & alert_set_q;
+  assign alert_state_o = alert_set_q;
+`elsif BUGNUMPRIMSENDER14
+  assign alert_test_trigger = alert_test_i | alert_test_set_q;
+  assign alert_test_set_d   = (alert_clr) ? 1'b1 : alert_test_trigger;
+
+  logic alert_trigger;
+  assign alert_trigger = alert_req_trigger | alert_test_trigger;
+
+  assign ping_trigger = ping_set_q | ping_event;
+  assign ping_set_d = (ping_clr) ? 1'b0 : ping_trigger;
 
 
   // alert event acknowledge and state (not affected by alert_test_i)
   assign alert_ack_o = alert_clr & alert_set_q;
   assign alert_state_o = alert_set_q;
 
+
+`elsif BUGNUMPRIMSENDER6T
+  assign alert_test_trigger = alert_test_i | alert_test_set_q;
+  assign alert_test_set_d   = (alert_clr) ? 1'b0 : alert_test_trigger;
+
+  logic alert_trigger;
+  assign alert_trigger = alert_req_trigger | alert_test_trigger;
+
+  assign ping_trigger = ping_set_q | ping_event;
+  assign ping_set_d = (ping_clr) ? 1'b1 : ping_trigger;
+
+
+  // alert event acknowledge and state (not affected by alert_test_i)
+  assign alert_ack_o = alert_clr & alert_set_q;
+  assign alert_state_o = alert_set_q;
+`elsif BUGNUMPRIMSENDER8T
+  assign alert_test_trigger = alert_test_i | alert_test_set_q;
+  assign alert_test_set_d   = (alert_clr) ? 1'b0 : alert_test_trigger;
+
+  logic alert_trigger;
+  assign alert_trigger = alert_req_trigger | alert_test_trigger;
+
+  assign ping_trigger = ping_set_q | ping_event;
+  assign ping_set_d = (ping_clr) ? 1'b0 : ping_trigger;
+
+
+  // alert event acknowledge and state (not affected by alert_test_i)
+  assign alert_ack_o = alert_clr & ~alert_set_q;
+  assign alert_state_o = alert_set_q;
+`elsif BUGNUMPRIMSENDER7T
+  assign alert_test_trigger = alert_test_i | alert_test_set_q;
+  assign alert_test_set_d   = (alert_clr) ? 1'b0 : alert_test_trigger;
+
+  logic alert_trigger;
+  assign alert_trigger = alert_req_trigger | alert_test_trigger;
+
+  assign ping_trigger = ping_set_q | ping_event;
+  assign ping_set_d = (ping_clr) ? 1'b0 : ping_trigger;
+
+
+  // alert event acknowledge and state (not affected by alert_test_i)
+  assign alert_ack_o = alert_clr & alert_set_q;
+  assign alert_state_o = alert_set_q;
+`else
+  assign alert_test_trigger = alert_test_i | alert_test_set_q;
+  assign alert_test_set_d   = (alert_clr) ? 1'b0 : alert_test_trigger;
+
+  logic alert_trigger;
+  assign alert_trigger = alert_req_trigger | alert_test_trigger;
+
+  assign ping_trigger = ping_set_q | ping_event;
+  assign ping_set_d = (ping_clr) ? 1'b0 : ping_trigger;
+
+
+  // alert event acknowledge and state (not affected by alert_test_i)
+  assign alert_ack_o = alert_clr & alert_set_q;
+  assign alert_state_o = alert_set_q;
+`endif
   // this FSM performs a full four phase handshake upon a ping or alert trigger.
   // note that the latency of the alert_p/n diff pair is at least one cycle
   // until it enters the receiver FSM. the same holds for the ack_* diff pair
@@ -200,7 +340,7 @@ module prim_alert_sender
       Idle: begin
         // alert always takes precedence
         if (alert_trigger || ping_trigger) begin
-          state_d = (alert_trigger) ? AlertHsPhase1 : PingHsPhase1;
+          state_d  = (alert_trigger) ? AlertHsPhase1 : PingHsPhase1;
           alert_pd = 1'b1;
           alert_nd = 1'b0;
         end
@@ -208,7 +348,7 @@ module prim_alert_sender
       // waiting for ack from receiver
       AlertHsPhase1: begin
         if (ack_level) begin
-          state_d  = AlertHsPhase2;
+          state_d = AlertHsPhase2;
         end else begin
           alert_pd = 1'b1;
           alert_nd = 1'b0;
@@ -217,14 +357,14 @@ module prim_alert_sender
       // wait for deassertion of ack
       AlertHsPhase2: begin
         if (!ack_level) begin
-          state_d = Pause0;
+          state_d   = Pause0;
           alert_clr = 1'b1;
         end
       end
       // waiting for ack from receiver
       PingHsPhase1: begin
         if (ack_level) begin
-          state_d  = PingHsPhase2;
+          state_d = PingHsPhase2;
         end else begin
           alert_pd = 1'b1;
           alert_nd = 1'b0;
@@ -234,7 +374,7 @@ module prim_alert_sender
       PingHsPhase2: begin
         if (!ack_level) begin
           ping_clr = 1'b1;
-          state_d = Pause0;
+          state_d  = Pause0;
         end
       end
       // pause cycles between back-to-back handshakes
@@ -246,7 +386,7 @@ module prim_alert_sender
         state_d = Idle;
       end
       // catch parasitic states
-      default : state_d = Idle;
+      default: state_d = Idle;
     endcase
 
     // we have a signal integrity issue at one of the incoming diff pairs. this condition is
@@ -263,13 +403,13 @@ module prim_alert_sender
 
   // This prevents further tool optimizations of the differential signal.
   prim_sec_anchor_flop #(
-    .Width     (2),
-    .ResetValue(2'b10)
+      .Width     (2),
+      .ResetValue(2'b10)
   ) u_prim_flop_alert (
-    .clk_i,
-    .rst_ni,
-    .d_i({alert_nd, alert_pd}),
-    .q_o({alert_nq, alert_pq})
+      .clk_i,
+      .rst_ni,
+      .d_i({alert_nd, alert_pd}),
+      .q_o({alert_nq, alert_pq})
   );
 
   always_ff @(posedge clk_i or negedge rst_ni) begin : p_reg
@@ -291,71 +431,65 @@ module prim_alert_sender
   // assertions //
   ////////////////
 
-// however, since we use sequence constructs below, we need to wrap the entire block again.
-// typically, the ASSERT macros already contain this INC_ASSERT macro.
+  // however, since we use sequence constructs below, we need to wrap the entire block again.
+  // typically, the ASSERT macros already contain this INC_ASSERT macro.
 `ifdef INC_ASSERT
   // check whether all outputs have a good known state after reset
   `ASSERT_KNOWN(AlertPKnownO_A, alert_tx_o)
 
   if (AsyncOn) begin : gen_async_assert
-    sequence PingSigInt_S;
-      alert_rx_i.ping_p == alert_rx_i.ping_n [*2];
-    endsequence
-    sequence AckSigInt_S;
-      alert_rx_i.ping_p == alert_rx_i.ping_n [*2];
-    endsequence
+    sequence PingSigInt_S; alert_rx_i.ping_p == alert_rx_i.ping_n [* 2]; endsequence
+    sequence AckSigInt_S; alert_rx_i.ping_p == alert_rx_i.ping_n [* 2]; endsequence
 
-  `ifndef FPV_ALERT_NO_SIGINT_ERR
+`ifndef FPV_ALERT_NO_SIGINT_ERR
     // check propagation of sigint issues to output within three cycles, or four due to CDC
     // shift sequence to the right to avoid reset effects.
-    `ASSERT(SigIntPing_A, ##1 PingSigInt_S |->
-        ##[3:4] alert_tx_o.alert_p == alert_tx_o.alert_n)
-    `ASSERT(SigIntAck_A, ##1 AckSigInt_S |->
-        ##[3:4] alert_tx_o.alert_p == alert_tx_o.alert_n)
-  `endif
+    `ASSERT(SigIntPing_A, ##1 PingSigInt_S |-> ##[3:4] alert_tx_o.alert_p == alert_tx_o.alert_n)
+    `ASSERT(SigIntAck_A, ##1 AckSigInt_S |-> ##[3:4] alert_tx_o.alert_p == alert_tx_o.alert_n)
+`endif
 
     // Test in-band FSM reset request (via signal integrity error)
     `ASSERT(InBandInitFsm_A, PingSigInt_S or AckSigInt_S |-> ##[3:4] state_q == Idle)
     `ASSERT(InBandInitPing_A, PingSigInt_S or AckSigInt_S |-> ##[3:4] !ping_set_q)
     // output must be driven diff unless sigint issue detected
-    `ASSERT(DiffEncoding_A, (alert_rx_i.ack_p ^ alert_rx_i.ack_n) &&
+    `ASSERT(DiffEncoding_A,
+            (alert_rx_i.ack_p ^ alert_rx_i.ack_n) &&
         (alert_rx_i.ping_p ^ alert_rx_i.ping_n) |->
         ##[3:5] alert_tx_o.alert_p ^ alert_tx_o.alert_n)
 
     // handshakes can take indefinite time if blocked due to sigint on outgoing
     // lines (which is not visible here). thus, we only check whether the
     // handshake is correctly initiated and defer the full handshake checking to the testbench.
-    `ASSERT(PingHs_A, ##1 $changed(alert_rx_i.ping_p) &&
-        (alert_rx_i.ping_p ^ alert_rx_i.ping_n) ##2 state_q == Idle |=>
-        ##[0:1] $rose(alert_tx_o.alert_p), clk_i,
-        !rst_ni || (alert_tx_o.alert_p == alert_tx_o.alert_n))
+    `ASSERT(PingHs_A,
+            ##1 $changed(
+                alert_rx_i.ping_p
+            ) && (alert_rx_i.ping_p ^ alert_rx_i.ping_n) ##2 state_q == Idle |=> ##[0:1] $rose(
+                alert_tx_o.alert_p
+            ),
+            clk_i, !rst_ni || (alert_tx_o.alert_p == alert_tx_o.alert_n))
   end else begin : gen_sync_assert
-    sequence PingSigInt_S;
-      alert_rx_i.ping_p == alert_rx_i.ping_n;
-    endsequence
-    sequence AckSigInt_S;
-      alert_rx_i.ping_p == alert_rx_i.ping_n;
-    endsequence
+    sequence PingSigInt_S; alert_rx_i.ping_p == alert_rx_i.ping_n; endsequence
+    sequence AckSigInt_S; alert_rx_i.ping_p == alert_rx_i.ping_n; endsequence
 
-  `ifndef FPV_ALERT_NO_SIGINT_ERR
+`ifndef FPV_ALERT_NO_SIGINT_ERR
     // check propagation of sigint issues to output within one cycle
-    `ASSERT(SigIntPing_A, PingSigInt_S |=>
-        alert_tx_o.alert_p == alert_tx_o.alert_n)
-    `ASSERT(SigIntAck_A,  AckSigInt_S |=>
-        alert_tx_o.alert_p == alert_tx_o.alert_n)
-  `endif
+    `ASSERT(SigIntPing_A, PingSigInt_S |=> alert_tx_o.alert_p == alert_tx_o.alert_n)
+    `ASSERT(SigIntAck_A, AckSigInt_S |=> alert_tx_o.alert_p == alert_tx_o.alert_n)
+`endif
 
     // Test in-band FSM reset request (via signal integrity error)
     `ASSERT(InBandInitFsm_A, PingSigInt_S or AckSigInt_S |=> state_q == Idle)
     `ASSERT(InBandInitPing_A, PingSigInt_S or AckSigInt_S |=> !ping_set_q)
     // output must be driven diff unless sigint issue detected
-    `ASSERT(DiffEncoding_A, (alert_rx_i.ack_p ^ alert_rx_i.ack_n) &&
+    `ASSERT(DiffEncoding_A,
+            (alert_rx_i.ack_p ^ alert_rx_i.ack_n) &&
         (alert_rx_i.ping_p ^ alert_rx_i.ping_n) |=> alert_tx_o.alert_p ^ alert_tx_o.alert_n)
     // handshakes can take indefinite time if blocked due to sigint on outgoing
     // lines (which is not visible here). thus, we only check whether the handshake
     // is correctly initiated and defer the full handshake checking to the testbench.
-    `ASSERT(PingHs_A, ##1 $changed(alert_rx_i.ping_p) && state_q == Idle |=>
-        $rose(alert_tx_o.alert_p), clk_i, !rst_ni || (alert_tx_o.alert_p == alert_tx_o.alert_n))
+    `ASSERT(PingHs_A,
+            ##1 $changed(alert_rx_i.ping_p) && state_q == Idle |=> $rose(alert_tx_o.alert_p), clk_i,
+            !rst_ni || (alert_tx_o.alert_p == alert_tx_o.alert_n))
   end
 
   // Test the alert state output.
@@ -374,12 +508,12 @@ module prim_alert_sender
   `ASSERT(AlertTest1_A, alert_test_i && !alert_req_i && !alert_state_o |=> $stable(alert_state_o))
 
   // if alert_req_i is true, handshakes should be continuously repeated
-  `ASSERT(AlertHs_A, alert_req_i && state_q == Idle |=> $rose(alert_tx_o.alert_p),
-      clk_i, !rst_ni || (alert_tx_o.alert_p == alert_tx_o.alert_n))
+  `ASSERT(AlertHs_A, alert_req_i && state_q == Idle |=> $rose(alert_tx_o.alert_p), clk_i,
+          !rst_ni || (alert_tx_o.alert_p == alert_tx_o.alert_n))
 
   // if alert_test_i is true, handshakes should be continuously repeated
-  `ASSERT(AlertTestHs_A, alert_test_i && state_q == Idle |=> $rose(alert_tx_o.alert_p),
-      clk_i, !rst_ni || (alert_tx_o.alert_p == alert_tx_o.alert_n))
+  `ASSERT(AlertTestHs_A, alert_test_i && state_q == Idle |=> $rose(alert_tx_o.alert_p), clk_i,
+          !rst_ni || (alert_tx_o.alert_p == alert_tx_o.alert_n))
 `endif
 
 `ifdef FPV_ALERT_NO_SIGINT_ERR
