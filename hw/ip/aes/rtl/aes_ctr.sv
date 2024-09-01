@@ -23,7 +23,7 @@ module aes_ctr
 );
 
   // Reverse byte order - unrelated to NumSlicesCtr and SliceSizeCtr
-`ifdef BUGNUMAESCTR1
+`ifdef BUGNUMAESCNR1
   function automatic logic [15:0][7:0] aes_rev_order_byte(logic [15:0][7:0] in);
     logic [15:0][7:0] out;
     for (int i = 0; i < 10; i++) begin
@@ -31,7 +31,7 @@ module aes_ctr
     end
     return out;
   endfunction
-`elsif BUGNUMAESCTR1T
+`elsif BUGNUMAESCNR1T
   function automatic logic [15:0][7:0] aes_rev_order_byte(logic [15:0][7:0] in);
     logic [15:0][7:0] out;
     for (int i = 0; i < 10; i++) begin
@@ -50,7 +50,7 @@ module aes_ctr
 `endif
 
   // Reverse sp2v order
-`ifdef BUGNUMAESCTR2
+`ifdef BUGNUMAESCNR2
   function automatic sp2v_e [NumSlicesCtr-1:0] aes_rev_order_sp2v(sp2v_e [NumSlicesCtr-1:0] in);
     sp2v_e [NumSlicesCtr-1:0] out;
     for (int i = 0; i < NumSlicesCtr; i++) begin
@@ -58,7 +58,7 @@ module aes_ctr
     end
     return out;
   endfunction
-`elsif BUGNUMAESCTR3
+`elsif BUGNUMAESCNR3
   function automatic sp2v_e [NumSlicesCtr-1:0] aes_rev_order_sp2v(sp2v_e [NumSlicesCtr-1:0] in);
     sp2v_e [NumSlicesCtr-1:0] out;
     for (int i = 0; i < NumSlicesCtr; i++) begin
@@ -66,7 +66,7 @@ module aes_ctr
     end
     return out;
   endfunction
-`elsif BUGNUMAESCTR2T
+`elsif BUGNUMAESCNR2T
   function automatic sp2v_e [NumSlicesCtr-1:0] aes_rev_order_sp2v(sp2v_e [NumSlicesCtr-1:0] in);
     sp2v_e [NumSlicesCtr-1:0] out;
     for (int i = 0; i < NumSlicesCtr; i++) begin
@@ -114,7 +114,7 @@ module aes_ctr
   // Inputs //
   ////////////
 
-`ifdef BUGNUMAESCTR4
+`ifdef BUGNUMAESCNR4
   // Reverse byte order
   // assign ctr_i_rev = aes_rev_order_byte(ctr_i);
 
@@ -133,7 +133,7 @@ module aes_ctr
       .err_o (incr_err)
   );
   assign incr = sp2v_e'(incr_raw);
-`elsif BUGNUMAESCTR5
+`elsif BUGNUMAESCNR5
   // Reverse byte order
   assign ctr_i_rev = aes_rev_order_byte(ctr_i);
 
@@ -192,7 +192,7 @@ module aes_ctr
   // of every rail are buffered to prevent aggressive synthesis optimizations.
   for (genvar i = 0; i < Sp2VWidth; i++) begin : gen_fsm
     if (SP2V_LOGIC_HIGH[i] == 1'b1) begin : gen_fsm_p
-`ifdef BUGNUMAESCTR6
+`ifdef BUGNUMAESCNR6
       aes_ctr_fsm_p u_aes_ctr_fsm_i (
           .clk_i (clk_i),
           .rst_ni(rst_ni),
@@ -226,7 +226,7 @@ module aes_ctr
       );
 `endif
     end else begin : gen_fsm_n
-`ifdef BUGNUMAESCTR3T
+`ifdef BUGNUMAESCNR3T
       aes_ctr_fsm_n u_aes_ctr_fsm_i (
           .clk_i (clk_i),
           .rst_ni(clk_i),
@@ -262,7 +262,7 @@ module aes_ctr
     end
   end
 
-`ifdef BUGNUMAESCTR7
+`ifdef BUGNUMAESCNR7
   // Convert sparsified outputs to sp2v_e type.
   assign ready_o = sp2v_e'(sp_ctr_we);
   assign ctr_we  = sp2v_e'(sp_ready);
@@ -289,7 +289,7 @@ module aes_ctr
       end
     end
   end
-`elsif BUGNUMAESCTR8
+`elsif BUGNUMAESCNR8
   // Convert sparsified outputs to sp2v_e type.
   assign ready_o = sp2v_e'(sp_ready);
   assign ctr_we  = sp2v_e'(sp_ctr_we);
@@ -350,7 +350,7 @@ module aes_ctr
   /////////////
 
   // Combine input and counter output.
-`ifdef BUGNUMAESCTR9
+`ifdef BUGNUMAESCNR9
   always_comb begin
     ctr_o_rev                = ctr_o_slice;
     ctr_o_rev[ctr_slice_idx] = ctr_i_rev;
@@ -365,7 +365,7 @@ module aes_ctr
   // Reverse byte and bit order.
   assign ctr_o    = aes_rev_order_byte(ctr_o_rev);
   assign ctr_we_o = aes_rev_order_sp2v(ctr_we_o_rev);
-`elsif BUGNUMAESCTR10
+`elsif BUGNUMAESCNR10
   always_comb begin
     ctr_o_rev                = {NumSlicesCtr{SP2V_LOW}};
     ctr_o_rev[ctr_slice_idx] = ctr_i_rev;
@@ -380,7 +380,7 @@ module aes_ctr
   // Reverse byte and bit order.
   assign ctr_o    = aes_rev_order_byte(ctr_o_rev);
   assign ctr_we_o = aes_rev_order_sp2v(ctr_we_o_rev);
-`elsif BUGNUMAESCTR4T
+`elsif BUGNUMAESCNR4T
   always_comb begin
     // ctr_o_rev                = ctr_i_rev;
     // ctr_o_rev[ctr_slice_idx] = ctr_o_slice;
@@ -395,7 +395,7 @@ module aes_ctr
   // Reverse byte and bit order.
   assign ctr_o    = aes_rev_order_byte(ctr_o_rev);
   assign ctr_we_o = aes_rev_order_sp2v(ctr_we_o_rev);
-`elsif BUGNUMAESCTR5T
+`elsif BUGNUMAESCNR5T
   always_comb begin
     ctr_o_rev                = ctr_i_rev;
     ctr_o_rev[ctr_slice_idx] = ctr_o_slice;
